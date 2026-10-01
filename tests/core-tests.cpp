@@ -287,6 +287,7 @@ void testTable()
 	Table t = buildTable(layout, s, cat, o, tr);
 	CHECK(t.columns == 7);
 	CHECK(t.columnIds == QStringList({"class", "tier", "name", "battles", "winrate", "damage", "accuracy"}));
+	CHECK(t.identity == QList<bool>({true, true, true, false, false, false, false}));
 	CHECK(t.header.size() == 7 && t.header[1].text == "<Overlay.Col.Tier>" && t.header[0].text.isEmpty());
 	CHECK(t.rows.size() == 3);
 	// Most recent first; an unknown vehicle still gets a row.

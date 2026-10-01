@@ -38,7 +38,9 @@ QImage Renderer::render(const Table &table, const Style &style)
 	QFont totalFont = style.font;
 	totalFont.setBold(true);
 	QFont labelFont = style.font;
-	labelFont.setPixelSize(std::max(6, static_cast<int>(std::lround(style.font.pixelSize() * 0.55))));
+	labelFont.setPixelSize(std::max(6, static_cast<int>(std::lround(style.font.pixelSize() * 0.42))));
+	labelFont.setBold(false);
+	labelFont.setItalic(false);
 
 	const bool inside = style.labelsInside && !table.header.isEmpty();
 	const QFontMetrics body(bodyFont), header(headerFont), total(totalFont), label(labelFont);
@@ -60,7 +62,15 @@ QImage Renderer::render(const Table &table, const Style &style)
 			widths[i] = std::max(widths[i], w);
 		}
 	};
-	measure(table.header, inside ? label : header);
+	if (inside) {
+		QList<Cell> labels = table.header;
+		for (int i = 0; i < labels.size(); ++i)
+			if (table.identity.value(i, false))
+				labels[i].text.clear();
+		measure(labels, label);
+	} else {
+		measure(table.header, header);
+	}
 	for (const auto &row : table.rows)
 		measure(row, body);
 	measure(table.total, total);
@@ -102,6 +112,10 @@ QImage Renderer::render(const Table &table, const Style &style)
 		}
 	};
 
+	// Class, tier and name carry no label inside the blocks; they sit in the
+	// middle of the block's height instead of on the values' line.
+	auto isIdentity = [&](int i) { return inside && table.identity.value(i, false); };
+
 	// `color` overrides the per-column colours (header, total row).
 	auto drawCells = [&](const QList<Cell> &row, int y, int h, const QFont &font, const QColor *color) {
 		p.setFont(font);
@@ -110,7 +124,7 @@ QImage Renderer::render(const Table &table, const Style &style)
 			const Cell &c = row[i];
 			const QString id = table.columnIds.value(i);
 			const QColor ink = color ? *color : style.columnColors.value(id, style.text);
-			const QRect box(x, y, widths[i], h);
+			const QRect box = isIdentity(i) ? QRect(x, y, widths[i], h + labelH) : QRect(x, y, widths[i], h);
 			if (c.kind == Cell::Kind::ClassIcon) {
 				if (QSvgRenderer *svg = icon(c.text)) {
 					// Keep the icon's own proportions inside the square.
@@ -148,7 +162,7 @@ QImage Renderer::render(const Table &table, const Style &style)
 		int x = padX;
 		for (int i = 0; i < table.header.size() && i < table.columns; ++i) {
 			const QString &text = table.header[i].text;
-			if (!text.isEmpty())
+			if (!text.isEmpty() && !isIdentity(i))
 				p.drawText(QRect(x, y, widths[i], labelH), static_cast<int>(Qt::AlignHCenter | Qt::AlignTop),
 					   text);
 			x += widths[i] + style.columnSpacing;

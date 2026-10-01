@@ -198,8 +198,10 @@ Table buildTable(const Layout &layout, const Session &session, const Catalog &ca
 
 	Table table;
 	table.columns = static_cast<int>(columns.size());
-	for (const Column *c : columns)
+	for (const Column *c : columns) {
 		table.columnIds.append(c->id);
+		table.identity.append(c->kind != Column::Kind::Value);
+	}
 	if (columns.isEmpty())
 		return table;
 

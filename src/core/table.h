@@ -32,6 +32,8 @@ struct Table {
 	QList<Cell> total; // empty when the total row is off
 	int columns = 0;
 	QStringList columnIds; // the layout id of each column, in display order
+	// Per column: it names the row (class, tier, name) rather than measuring it.
+	QList<bool> identity;
 };
 
 struct TableOptions {
