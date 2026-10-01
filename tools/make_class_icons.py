@@ -78,12 +78,21 @@ def triangle(x0, x1, top, apex_x, apex_y, r):
     return "".join(d) + "Z"
 
 
+def shrunk(k, cx, cy, x0, x1, top, apex_x, apex_y, r):
+    """Triangle parameters scaled by k around (cx, cy)."""
+    sx = lambda x: cx + (x - cx) * k
+    sy = lambda y: cy + (y - cy) * k
+    return sx(x0), sx(x1), sy(top), sx(apex_x), sy(apex_y), r * k
+
+
 SHAPES = {
     #            canvas     geometry
     "lightTank": ((36, 48), lambda: diamond(17.5, 23.3, 14.35, 21.3, [], 0)),
     "mediumTank": ((36, 48), lambda: diamond(17.45, 23.7, 14.55, 20.7, [0.49], 3.3)),
     "heavyTank": ((38, 48), lambda: diamond(18.7, 23.5, 16.0, 21.05, [0.31, 0.68], 2.6)),
-    "AT-SPG": ((44, 48), lambda: triangle(2.1, 40.9, 3.7, 21.25, 44.2, 3.2)),
+    # Scaled to 82% of the app's shape: being wide at the top, the triangle
+    # looked heavier than the diamonds at the same height.
+    "AT-SPG": ((44, 48), lambda: triangle(*shrunk(0.82, 21.5, 24.0, 2.1, 40.9, 3.7, 21.25, 44.2, 3.2))),
 }
 
 
