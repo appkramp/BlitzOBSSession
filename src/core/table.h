@@ -14,6 +14,7 @@
 #include <QString>
 
 #include <functional>
+#include <optional>
 
 namespace bss {
 
@@ -24,6 +25,9 @@ struct Cell {
 	Kind kind = Kind::Text;
 	Align align = Align::Right;
 	QString text; // Text: the text; ClassIcon: the vehicle type, empty for none
+	// A number's value as shown (rounded to its decimals), for colours that
+	// depend on it; absent for text and for a dash.
+	std::optional<double> value;
 };
 
 struct Table {

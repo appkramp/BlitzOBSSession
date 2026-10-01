@@ -23,6 +23,23 @@ public:
 	virtual double eval(const Counters &c) const = 0;
 };
 
+// One band of a value-dependent colour: values from `from` (inclusive) up
+// to the next band's `from` get `color`. The first band has no lower bound
+// (`from` is -infinity).
+struct ValueRange {
+	double from;
+	QString color; // #rrggbb
+
+	bool operator==(const ValueRange &o) const { return from == o.from && color == o.color; }
+};
+
+// "-:#ff0000;45:#bbbbbb;50:#a8e689" — how a source stores its bands. Parsing
+// sorts them and makes the first unbounded; an empty string is no bands.
+QList<ValueRange> parseRanges(const QString &text);
+QString formatRanges(const QList<ValueRange> &ranges);
+// The colour for a value, or an empty string when there are no bands.
+QString rangeColor(const QList<ValueRange> &ranges, double value);
+
 struct Column {
 	enum class Kind { ClassIcon, Tier, Name, Value };
 
@@ -34,6 +51,7 @@ struct Column {
 	int decimals = 0;
 	QString suffix;
 	bool visibleByDefault = true;
+	QList<ValueRange> ranges; // the default value-dependent colours; usually none
 };
 
 class Layout {

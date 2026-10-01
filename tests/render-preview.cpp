@@ -79,6 +79,8 @@ int main(int argc, char **argv)
 	style.labelsInside = argc > 5 && QByteArray(argv[5]) == "inside";
 	if (argc > 6)
 		style.minWidth = atoi(argv[6]);
+	for (const Column &c : layout.columns())
+		style.ranges.insert(c.id, c.ranges);
 	Renderer renderer(QStringLiteral(BSS_SOURCE_DIR "/data/icons"));
 	QImage image = renderer.render(table, style);
 

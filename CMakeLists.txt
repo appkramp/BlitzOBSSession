@@ -78,6 +78,8 @@ target_sources(
     src/stats-client.h
     src/ui/columns-dialog.cpp
     src/ui/columns-dialog.h
+    src/ui/ranges-dialog.cpp
+    src/ui/ranges-dialog.h
     src/ui/settings-dialog.cpp
     src/ui/settings-dialog.h
 )

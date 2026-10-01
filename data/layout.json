@@ -5,7 +5,14 @@
         { "id": "tier",     "kind": "tier",       "header": "Overlay.Col.Tier" },
         { "id": "name",     "kind": "name",       "header": "Overlay.Col.Tank" },
         { "id": "battles",  "header": "Overlay.Col.Battles",  "expr": "battles" },
-        { "id": "winrate",  "header": "Overlay.Col.WinRate",  "expr": "wins / battles * 100",             "decimals": 1, "suffix": "%" },
+        { "id": "winrate",  "header": "Overlay.Col.WinRate",  "expr": "wins / battles * 100",             "decimals": 2, "suffix": "%",
+          "ranges": [
+              {             "color": "#ff0000" },
+              { "from": 45, "color": "#bbbbbb" },
+              { "from": 50, "color": "#a8e689" },
+              { "from": 60, "color": "#72d1ff" },
+              { "from": 70, "color": "#9989e6" }
+          ] },
         { "id": "damage",   "header": "Overlay.Col.Damage",   "expr": "damage_dealt / battles" },
         { "id": "accuracy", "header": "Overlay.Col.Accuracy", "expr": "hits / shots * 100",               "decimals": 1, "suffix": "%" },
         { "id": "survival", "header": "Overlay.Col.Survival", "expr": "survived_battles / battles * 100", "decimals": 1, "suffix": "%" },

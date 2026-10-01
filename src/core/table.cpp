@@ -3,6 +3,7 @@
 #include <QHash>
 
 #include <algorithm>
+#include <cmath>
 
 namespace bss {
 
@@ -234,9 +235,15 @@ Table buildTable(const Layout &layout, const Session &session, const Catalog &ca
 	auto valueCell = [&](const Column &c, const Counters &counters) {
 		Cell cell;
 		cell.align = Cell::Align::Right;
-		cell.text = counters.value(QStringLiteral("battles")) > 0
-				    ? formatValue(c.expr->eval(counters), c.decimals, c.suffix, locale)
-				    : kDash;
+		if (counters.value(QStringLiteral("battles")) <= 0) {
+			cell.text = kDash;
+			return cell;
+		}
+		const double v = c.expr->eval(counters);
+		cell.text = formatValue(v, c.decimals, c.suffix, locale);
+		// Compared as the viewer reads it: 44.996 shows as 45.00 and is 45.
+		const double scale = std::pow(10.0, c.decimals);
+		cell.value = std::round(v * scale) / scale;
 		return cell;
 	};
 

@@ -26,6 +26,9 @@ struct Style {
 	QColor text = QColor(255, 255, 255);
 	QColor header = QColor(180, 190, 200);
 	QColor total = QColor(255, 204, 64); // every cell of the total row
+	// Value-dependent colours per column id; they win over the colours above
+	// wherever a number is shown, the total row included.
+	QHash<QString, QList<ValueRange>> ranges;
 
 	QColor block = QColor(12, 14, 20, 178); // fill of a row's block, alpha included
 	QColor border = QColor(255, 255, 255, 56);

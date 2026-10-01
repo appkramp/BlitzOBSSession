@@ -147,7 +147,12 @@ QImage Renderer::render(const Table &table, const Style &style)
 		for (int i = 0; i < row.size() && i < table.columns; ++i) {
 			const Cell &c = row[i];
 			const QString id = table.columnIds.value(i);
-			const QColor ink = color ? *color : style.columnColors.value(id, style.text);
+			QColor ink = color ? *color : style.columnColors.value(id, style.text);
+			if (c.value) {
+				const QString banded = rangeColor(style.ranges.value(id), *c.value);
+				if (!banded.isEmpty())
+					ink = QColor(banded);
+			}
 			const QRect box = isIdentity(i) ? QRect(x, y, widths[i], h + labelH)
 							: QRect(x, y, widths[i], h);
 			if (c.kind == Cell::Kind::ClassIcon) {

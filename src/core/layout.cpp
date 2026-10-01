@@ -5,6 +5,10 @@
 #include <QJsonObject>
 #include <QSet>
 
+#include <algorithm>
+#include <cmath>
+#include <limits>
+
 namespace bss {
 
 namespace {
@@ -240,6 +244,13 @@ bool Layout::fromJson(const QByteArray &json, Layout &out, QString *error)
 		col.decimals = obj.value(QStringLiteral("decimals")).toInt(0);
 		col.suffix = obj.value(QStringLiteral("suffix")).toString();
 		col.visibleByDefault = obj.value(QStringLiteral("visible")).toBool(true);
+		for (const QJsonValue r : obj.value(QStringLiteral("ranges")).toArray()) {
+			const QJsonObject band = r.toObject();
+			const QJsonValue from = band.value(QStringLiteral("from"));
+			col.ranges.append({from.isDouble() ? from.toDouble() : -std::numeric_limits<double>::infinity(),
+					   band.value(QStringLiteral("color")).toString().toLower()});
+		}
+		col.ranges = parseRanges(formatRanges(col.ranges)); // sorted, first unbounded
 
 		if (col.kind == Column::Kind::Value) {
 			QString exprError;
@@ -254,6 +265,46 @@ bool Layout::fromJson(const QByteArray &json, Layout &out, QString *error)
 
 	out = layout;
 	return true;
+}
+
+QList<ValueRange> parseRanges(const QString &text)
+{
+	QList<ValueRange> out;
+	for (const QString &part : text.split(QLatin1Char(';'), Qt::SkipEmptyParts)) {
+		const qsizetype colon = part.indexOf(QLatin1Char(':'));
+		if (colon < 0)
+			continue;
+		const QString from = part.left(colon).trimmed();
+		const QString color = part.mid(colon + 1).trimmed().toLower();
+		bool ok = false;
+		const double value = from.toDouble(&ok);
+		if (!color.startsWith(QLatin1Char('#')))
+			continue;
+		out.append({ok ? value : -std::numeric_limits<double>::infinity(), color});
+	}
+	std::stable_sort(out.begin(), out.end(),
+			 [](const ValueRange &a, const ValueRange &b) { return a.from < b.from; });
+	if (!out.isEmpty())
+		out.first().from = -std::numeric_limits<double>::infinity();
+	return out;
+}
+
+QString formatRanges(const QList<ValueRange> &ranges)
+{
+	QStringList parts;
+	for (const ValueRange &r : ranges)
+		parts.append((std::isinf(r.from) ? QStringLiteral("-") : QString::number(r.from)) + QLatin1Char(':') +
+			     r.color);
+	return parts.join(QLatin1Char(';'));
+}
+
+QString rangeColor(const QList<ValueRange> &ranges, double value)
+{
+	QString color;
+	for (const ValueRange &r : ranges)
+		if (value >= r.from)
+			color = r.color;
+	return color;
 }
 
 QString romanTier(int tier)

@@ -15,6 +15,7 @@
 #include <QTimeZone>
 
 #include <cmath>
+#include <limits>
 #include <cstdio>
 #include <functional>
 #include <vector>
@@ -289,7 +290,7 @@ void testTable()
 	CHECK(t.columnIds == QStringList({"class", "tier", "name", "battles", "winrate", "damage", "accuracy"}));
 	CHECK(t.identity == QList<bool>({true, true, true, false, false, false, false}));
 	CHECK(t.stretch == QList<bool>({false, false, true, false, false, false, false}));
-	CHECK(t.samples == QStringList({"", "VIII", "", "8888", QString::fromUtf8("888,8%"), "8888",
+	CHECK(t.samples == QStringList({"", "VIII", "", "8888", QString::fromUtf8("888,88%"), "8888",
 					QString::fromUtf8("888,8%")}));
 	CHECK(t.header.size() == 7 && t.header[1].text == "<Overlay.Col.Tier>" && t.header[0].text.isEmpty());
 	CHECK(t.rows.size() == 3);
@@ -298,11 +299,12 @@ void testTable()
 	CHECK(t.rows[1][2].text == "Medium" && t.rows[1][1].text == "X" && t.rows[1][0].text == "mediumTank");
 	CHECK(t.rows[2][2].text == QString::fromUtf8("Тяж") && t.rows[2][1].text == "VIII");
 	// Russian decimal comma, no thousands separator.
-	CHECK(t.rows[2][3].text == "2" && t.rows[2][4].text == QString::fromUtf8("50,0%"));
+	CHECK(t.rows[2][3].text == "2" && t.rows[2][4].text == QString::fromUtf8("50,00%"));
+	CHECK(t.rows[2][4].value == 50.0 && !t.rows[2][2].value);
 	CHECK(t.rows[2][5].text == "1500" || t.rows[2][5].text == "1501"); // 1500.5 rounds either way
 	CHECK(t.rows[0][6].text == QString::fromUtf8("0,0%"));             // no shots: 0, as in the app
 	CHECK(t.total.size() == 7 && t.total[2].text == "<Overlay.Total>" && t.total[3].text == "4");
-	CHECK(t.total[4].text == QString::fromUtf8("50,0%"));
+	CHECK(t.total[4].text == QString::fromUtf8("50,00%"));
 
 	o.language = "en";
 	o.rows = TableOptions::Rows::Selected;
@@ -310,7 +312,7 @@ void testTable()
 	o.showHeader = false;
 	t = buildTable(layout, s, cat, o, tr);
 	CHECK(t.header.isEmpty() && t.rows.size() == 1 && t.rows[0][2].text == "Medium");
-	CHECK(t.rows[0][4].text == "100.0%");
+	CHECK(t.rows[0][4].text == "100.00%");
 
 	o.rows = TableOptions::Rows::TotalsOnly;
 	o.showTotal = false; // totals-only shows the total row regardless
@@ -434,6 +436,37 @@ void testGrouping()
 	CHECK(t.rows.isEmpty() && t.total.size() == 2 && t.total[0].text == "5");
 }
 
+void testRanges()
+{
+	const double inf = std::numeric_limits<double>::infinity();
+	// The defaults the streamer asked for, on the win rate.
+	const Layout layout = shippedLayout();
+	QList<ValueRange> wr;
+	for (const Column &c : layout.columns())
+		if (c.id == "winrate")
+			wr = c.ranges;
+	CHECK(wr.size() == 5 && std::isinf(wr[0].from) && wr[0].from < 0 && wr[1].from == 45);
+	CHECK(rangeColor(wr, 44.99) == "#ff0000");
+	CHECK(rangeColor(wr, 45) == "#bbbbbb");
+	CHECK(rangeColor(wr, 49.99) == "#bbbbbb");
+	CHECK(rangeColor(wr, 50) == "#a8e689");
+	CHECK(rangeColor(wr, 60) == "#72d1ff");
+	CHECK(rangeColor(wr, 69.99) == "#72d1ff");
+	CHECK(rangeColor(wr, 70) == "#9989e6");
+	CHECK(rangeColor(wr, 100) == "#9989e6");
+	CHECK(rangeColor({}, 50).isEmpty());
+
+	// The settings string: sorted on reading, the first band unbounded.
+	const QList<ValueRange> parsed = parseRanges("60:#00FF00; 30:#0000ff;-:#ff0000;junk;10:notacolour");
+	CHECK(parsed.size() == 3 && parsed[0].from == -inf && parsed[0].color == "#ff0000");
+	CHECK(parsed[1].from == 30 && parsed[2].from == 60 && parsed[2].color == "#00ff00");
+	CHECK(formatRanges(parsed) == "-:#ff0000;30:#0000ff;60:#00ff00");
+	CHECK(parseRanges(formatRanges(wr)) == wr);
+	CHECK(parseRanges("").isEmpty());
+	// One band only: everything gets its colour.
+	CHECK(rangeColor(parseRanges("50:#123456"), -5) == "#123456");
+}
+
 void testColumnOrder()
 {
 	const Layout layout = shippedLayout();
@@ -463,6 +496,7 @@ int main()
 		{"start of local day", testStartOfLocalDay},
 		{"table", testTable},
 		{"grouping", testGrouping},
+		{"value ranges", testRanges},
 		{"column order", testColumnOrder},
 	};
 	for (const auto &[name, fn] : tests) {

@@ -14,6 +14,7 @@
 #include "render.h"
 #include "stats-client.h"
 #include "ui/columns-dialog.h"
+#include "ui/ranges-dialog.h"
 
 #include <obs-module.h>
 #include <plugin-support.h>
@@ -76,6 +77,21 @@ QByteArray colorKey(const QString &id)
 QColor defaultColumnColor(const Column &c)
 {
 	return c.kind == Column::Kind::Tier ? QColor(200, 206, 216) : QColor(255, 255, 255);
+}
+
+QByteArray rangesKey(const QString &id)
+{
+	return QByteArrayLiteral("ranges_") + id.toUtf8();
+}
+
+// A column's colour bands: the source's own once it has saved any (an empty
+// string meaning none), otherwise the template's.
+QList<ValueRange> columnRanges(const Column &c, obs_data_t *settings)
+{
+	const QByteArray key = rangesKey(c.id);
+	if (obs_data_has_user_value(settings, key.constData()))
+		return parseRanges(QString::fromUtf8(obs_data_get_string(settings, key.constData())));
+	return c.ranges;
 }
 
 QByteArray tankKey(int tankId)
@@ -212,8 +228,11 @@ void readSettings(OverlaySource &s, obs_data_t *settings)
 	obs_data_release(font);
 
 	if (Plugin *p = plugin()) {
-		for (const Column &c : p->layout.columns())
+		for (const Column &c : p->layout.columns()) {
 			st.columnColors.insert(c.id, toColor(obs_data_get_int(settings, colorKey(c.id).constData())));
+			if (c.kind == Column::Kind::Value)
+				st.ranges.insert(c.id, columnRanges(c, settings));
+		}
 	}
 	st.header = toColor(obs_data_get_int(settings, kColorHeader));
 	st.labelsInside = QString::fromUtf8(obs_data_get_string(settings, kHeaderPlace)) == QLatin1String("inside");
@@ -381,6 +400,43 @@ bool editColumns(obs_properties_t *, obs_property_t *, void *priv)
 	return accepted;
 }
 
+// The "Colour by value…" button.
+bool editRanges(obs_properties_t *, obs_property_t *, void *priv)
+{
+	auto *source = static_cast<obs_source_t *>(priv);
+	Plugin *p = plugin();
+	if (!source || !p)
+		return false;
+
+	obs_data_t *settings = obs_source_get_settings(source);
+	QList<RangesDialog::ColumnInfo> columns;
+	QString selected;
+	for (const QString &id : columnOrder(p->layout, settings)) {
+		for (const Column &c : p->layout.columns()) {
+			if (c.id != id || c.kind != Column::Kind::Value)
+				continue;
+			columns.append(
+				{c.id, columnLabel(c), c.decimals, c.suffix, c.ranges, columnRanges(c, settings)});
+			if (selected.isEmpty() && !c.ranges.isEmpty())
+				selected = c.id;
+		}
+	}
+
+	RangesDialog dialog(columns, selected, QApplication::activeWindow());
+	const bool accepted = dialog.exec() == QDialog::Accepted;
+	if (accepted) {
+		const auto edited = dialog.edited();
+		for (auto it = edited.begin(); it != edited.end(); ++it)
+			obs_data_set_string(settings, rangesKey(it.key()).constData(),
+					    formatRanges(it.value()).toUtf8().constData());
+		for (const QString &id : dialog.resetToDefault())
+			obs_data_unset_user_value(settings, rangesKey(id).constData());
+		obs_source_update(source, settings);
+	}
+	obs_data_release(settings);
+	return false;
+}
+
 obs_properties_t *getProperties(void *data)
 {
 	obs_source_t *source = data ? (*holder(data))->source : nullptr;
@@ -500,6 +556,8 @@ obs_properties_t *getProperties(void *data)
 								       columnLabel(c).toUtf8().constData());
 		}
 		obs_data_release(settings);
+		obs_properties_add_button2(colors, "ranges_edit", obs_module_text("Prop.RangesEdit"), editRanges,
+					   source);
 	}
 	obs_properties_add_group(props, "data_colors", obs_module_text("Prop.DataColors"), OBS_GROUP_NORMAL, colors);
 
