@@ -54,9 +54,9 @@ BattleRecord record(qint64 id, int tank, const char *date, const QJsonObject &al
 
 QJsonObject battle(int wins, int damage, int hits, int shots, int survived, int frags)
 {
-	return {{"battles", 1},     {"wins", wins},         {"damage_dealt", damage},
-		{"hits", hits},     {"shots", shots},       {"survived_battles", survived},
-		{"frags", frags},   {"nickname", "ignored"}};
+	return {{"battles", 1},   {"wins", wins},         {"damage_dealt", damage},
+		{"hits", hits},   {"shots", shots},       {"survived_battles", survived},
+		{"frags", frags}, {"nickname", "ignored"}};
 }
 
 void testSessionSumsAndDeduplicates()
@@ -141,7 +141,8 @@ void testLayoutFile()
 	QStringList ids;
 	for (const Column &c : layout.columns())
 		ids << c.id;
-	for (const char *id : {"class", "tier", "name", "battles", "winrate", "damage", "accuracy", "survival", "frags"})
+	for (const char *id :
+	     {"class", "tier", "name", "battles", "winrate", "damage", "accuracy", "survival", "frags"})
 		CHECK(ids.contains(QString::fromLatin1(id)));
 
 	// The shipped formulas give the application's numbers.
@@ -219,13 +220,16 @@ void testProtocol()
 	CHECK(sub.value("realm") == "eu");
 
 	protocol::Message m;
-	CHECK(protocol::parse(R"({"type":"welcome","protocol":1,"account":{"account_id":7,"nickname":"N","realms":["eu","com"]}})", m));
+	CHECK(protocol::parse(
+		R"({"type":"welcome","protocol":1,"account":{"account_id":7,"nickname":"N","realms":["eu","com"]}})",
+		m));
 	CHECK(m.type == protocol::Message::Type::Welcome && m.account.accountId == 7);
 	CHECK(m.account.realms == QStringList({"eu", "com"}));
 
 	CHECK(protocol::parse(R"({"type":"history","realm":"eu","has_more":true,"battles":[
 		{"id":5,"tank_id":1,"date":"2026-09-29T10:00:00Z","count":1,"values":{"all":{"battles":1}}},
-		{"tank_id":1}]})", m));
+		{"tank_id":1}]})",
+			      m));
 	CHECK(m.type == protocol::Message::Type::History && m.hasMore && m.battles.size() == 1);
 	CHECK(m.battles[0].date == QDateTime(QDate(2026, 9, 29), QTime(10, 0), QTimeZone::UTC));
 
@@ -257,7 +261,6 @@ void testStartOfLocalDay()
 	CHECK(start.date() == QDate(2026, 9, 29) && start.time() == QTime(0, 0));
 }
 
-
 Layout shippedLayout()
 {
 	QFile f(QStringLiteral(BSS_SOURCE_DIR "/data/layout.json"));
@@ -273,7 +276,8 @@ void testTable()
 	Catalog cat;
 	Catalog::parse(R"({"schema_version":1,"revision":1,"vehicles":{
 		"3089":{"tier":8,"type":"heavyTank","names":{"en":"Heavy","ru":"Тяж"}},
-		"49":{"tier":10,"type":"mediumTank","names":{"en":"Medium"}}}})", cat);
+		"49":{"tier":10,"type":"mediumTank","names":{"en":"Medium"}}}})",
+		       cat);
 	Session s;
 	s.add(record(1, 3089, "2026-09-29T17:00:00Z", battle(1, 2000, 7, 10, 1, 2)));
 	s.add(record(2, 3089, "2026-09-29T17:10:00Z", battle(0, 1001, 3, 10, 0, 1)));
@@ -283,15 +287,17 @@ void testTable()
 	TableOptions o;
 	o.columns = {"class", "tier", "name", "battles", "winrate", "damage", "accuracy"};
 	o.language = "ru";
-	auto tr = [](const QString &key) { return QStringLiteral("<%1>").arg(key); };
+	auto tr = [](const QString &key) {
+		return QStringLiteral("<%1>").arg(key);
+	};
 
 	Table t = buildTable(layout, s, cat, o, tr);
 	CHECK(t.columns == 7);
 	CHECK(t.columnIds == QStringList({"class", "tier", "name", "battles", "winrate", "damage", "accuracy"}));
 	CHECK(t.identity == QList<bool>({true, true, true, false, false, false, false}));
 	CHECK(t.stretch == QList<bool>({false, false, true, false, false, false, false}));
-	CHECK(t.samples == QStringList({"", "VIII", "", "8888", QString::fromUtf8("888,88%"), "8888",
-					QString::fromUtf8("888,8%")}));
+	CHECK(t.samples ==
+	      QStringList({"", "VIII", "", "8888", QString::fromUtf8("888,88%"), "8888", QString::fromUtf8("888,8%")}));
 	CHECK(t.header.size() == 7 && t.header[1].text == "<Overlay.Col.Tier>" && t.header[0].text.isEmpty());
 	CHECK(t.rows.size() == 3);
 	// Most recent first; an unknown vehicle still gets a row.
@@ -376,14 +382,17 @@ void testGrouping()
 		"1":{"tier":8,"type":"heavyTank","names":{"en":"H8"}},
 		"2":{"tier":8,"type":"mediumTank","names":{"en":"M8"}},
 		"3":{"tier":10,"type":"heavyTank","names":{"en":"H10"}},
-		"4":{"tier":8,"type":"heavyTank","names":{"en":"H8b"}}}})", cat);
+		"4":{"tier":8,"type":"heavyTank","names":{"en":"H8b"}}}})",
+		       cat);
 	Session s;
 	s.add(record(1, 1, "2026-09-29T17:00:00Z", battle(1, 2000, 1, 1, 1, 1)));
 	s.add(record(2, 2, "2026-09-29T17:10:00Z", battle(0, 1000, 1, 1, 0, 0)));
 	s.add(record(3, 3, "2026-09-29T17:20:00Z", battle(1, 3000, 1, 1, 1, 2)));
 	s.add(record(4, 4, "2026-09-29T17:30:00Z", battle(1, 1000, 1, 1, 0, 1)));
 	s.add(record(5, 1, "2026-09-29T17:40:00Z", battle(0, 3000, 1, 1, 0, 0)));
-	auto tr = [](const QString &key) { return key; };
+	auto tr = [](const QString &key) {
+		return key;
+	};
 
 	TableOptions o;
 	o.language = "en";
@@ -401,7 +410,8 @@ void testGrouping()
 	o.columns = {"class", "battles"};
 	t = buildTable(layout, s, cat, o, tr);
 	CHECK(t.rows.size() == 2);
-	CHECK(t.rows[0][0].kind == Cell::Kind::ClassIcon && t.rows[0][0].text == "heavyTank" && t.rows[0][1].text == "4");
+	CHECK(t.rows[0][0].kind == Cell::Kind::ClassIcon && t.rows[0][0].text == "heavyTank" &&
+	      t.rows[0][1].text == "4");
 	CHECK(t.rows[1][0].text == "mediumTank" && t.rows[1][1].text == "1");
 
 	// By class and tier together.

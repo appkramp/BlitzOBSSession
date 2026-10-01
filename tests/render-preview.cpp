@@ -49,16 +49,16 @@ int main(int argc, char **argv)
 		r.id = id;
 		r.tankId = b.tank;
 		r.date = QDateTime(QDate(2026, 9, 29), QTime(18, 0)).addSecs(id * 420);
-		r.all = QJsonObject{{"battles", 1},        {"wins", b.wins},         {"damage_dealt", b.damage},
-				    {"hits", b.hits},      {"shots", b.shots},       {"survived_battles", b.survived},
+		r.all = QJsonObject{{"battles", 1},    {"wins", b.wins},   {"damage_dealt", b.damage},
+				    {"hits", b.hits},  {"shots", b.shots}, {"survived_battles", b.survived},
 				    {"frags", b.frags}};
 		session.add(r);
 		++id;
 	}
 
 	const QString lang = argc > 3 ? QString::fromLatin1(argv[3]) : QStringLiteral("ru");
-	const QMap<QString, QString> ru = {{"Overlay.Col.Tier", "Ур."},       {"Overlay.Col.Tank", "Танк"},
-					   {"Overlay.Col.Battles", "Бои"},    {"Overlay.Col.WinRate", "Победы"},
+	const QMap<QString, QString> ru = {{"Overlay.Col.Tier", "Ур."},        {"Overlay.Col.Tank", "Танк"},
+					   {"Overlay.Col.Battles", "Бои"},     {"Overlay.Col.WinRate", "Победы"},
 					   {"Overlay.Col.Damage", "Ср. урон"}, {"Overlay.Col.Accuracy", "Точность"},
 					   {"Overlay.Col.Survival", "Выжив."}, {"Overlay.Col.Frags", "Фраги/бой"},
 					   {"Overlay.Total", "Итого"}};
@@ -73,8 +73,10 @@ int main(int argc, char **argv)
 	Style style;
 	style.font = QFont(QStringLiteral("Helvetica Neue"));
 	style.font.setPixelSize(argc > 4 ? atoi(argv[4]) : 28);
-	style.columnColors = {{"name", QColor(255, 255, 255)},     {"damage", QColor(255, 170, 60)},
-			      {"winrate", QColor(110, 220, 120)}, {"tier", QColor(200, 206, 216)},
+	style.columnColors = {{"name", QColor(255, 255, 255)},
+			      {"damage", QColor(255, 170, 60)},
+			      {"winrate", QColor(110, 220, 120)},
+			      {"tier", QColor(200, 206, 216)},
 			      {"accuracy", QColor(120, 190, 255)}};
 	style.labelsInside = argc > 5 && QByteArray(argv[5]) == "inside";
 	if (argc > 6)
