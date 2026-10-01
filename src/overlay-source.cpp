@@ -38,6 +38,9 @@ constexpr const char *kSortBy = "sort_by";
 constexpr const char *kSortDir = "sort_dir";
 constexpr const char *kColumnOrder = "column_order";
 constexpr const char *kMaxRows = "max_rows";
+constexpr const char *kSizeMode = "size_mode";
+constexpr const char *kFixedWidth = "fixed_width";
+constexpr const char *kFixedRows = "fixed_rows";
 constexpr const char *kShowHeader = "show_header";
 constexpr const char *kHeaderPlace = "header_place";
 constexpr const char *kShowTotal = "show_total";
@@ -212,6 +215,14 @@ void readSettings(OverlaySource &s, obs_data_t *settings)
 	}
 	st.header = toColor(obs_data_get_int(settings, kColorHeader));
 	st.labelsInside = QString::fromUtf8(obs_data_get_string(settings, kHeaderPlace)) == QLatin1String("inside");
+	// A fixed size depends on the settings alone, never on the data: the rows
+	// it has room for are also the most it shows.
+	if (QString::fromUtf8(obs_data_get_string(settings, kSizeMode)) == QLatin1String("fixed")) {
+		st.fixedWidth = std::max(100, static_cast<int>(obs_data_get_int(settings, kFixedWidth)));
+		const int rowCount = std::max(1, static_cast<int>(obs_data_get_int(settings, kFixedRows)));
+		st.fixedRows = o.rows == TableOptions::Rows::TotalsOnly ? 0 : rowCount;
+		o.maxRows = rowCount;
+	}
 	st.total = toColor(obs_data_get_int(settings, kColorTotal));
 	// The block's colour and its transparency are set apart, as the streamer
 	// thinks of them.
@@ -290,6 +301,9 @@ void getDefaults(obs_data_t *settings)
 	obs_data_set_default_string(settings, kSortDir, "desc");
 	obs_data_set_default_string(settings, kColumnOrder, "");
 	obs_data_set_default_int(settings, kMaxRows, 0);
+	obs_data_set_default_string(settings, kSizeMode, "fixed");
+	obs_data_set_default_int(settings, kFixedWidth, 1100);
+	obs_data_set_default_int(settings, kFixedRows, 8);
 	obs_data_set_default_bool(settings, kShowHeader, true);
 	obs_data_set_default_string(settings, kHeaderPlace, "top");
 	obs_data_set_default_bool(settings, kShowTotal, true);
@@ -336,7 +350,10 @@ bool layoutModified(obs_properties_t *props, obs_property_t *, obs_data_t *setti
 	obs_property_set_visible(obs_properties_get(props, kTanksGroup), rows == QLatin1String("selected"));
 	obs_property_set_visible(obs_properties_get(props, kSortBy), !totals);
 	obs_property_set_visible(obs_properties_get(props, kSortDir), !totals && sorted);
-	obs_property_set_visible(obs_properties_get(props, kMaxRows), !totals);
+	const bool fixed = QString::fromUtf8(obs_data_get_string(settings, kSizeMode)) == QLatin1String("fixed");
+	obs_property_set_visible(obs_properties_get(props, kMaxRows), !totals && !fixed);
+	obs_property_set_visible(obs_properties_get(props, kFixedWidth), fixed);
+	obs_property_set_visible(obs_properties_get(props, kFixedRows), fixed && !totals);
 	obs_property_set_visible(obs_properties_get(props, kShowTotal), !totals);
 	obs_property_set_visible(obs_properties_get(props, kHeaderPlace), obs_data_get_bool(settings, kShowHeader));
 	return true;
@@ -428,6 +445,15 @@ obs_properties_t *getProperties(void *data)
 	obs_property_list_add_string(sortDir, obs_module_text("SortDir.Desc"), "desc");
 	obs_property_list_add_string(sortDir, obs_module_text("SortDir.Asc"), "asc");
 
+	obs_property_t *size = obs_properties_add_list(props, kSizeMode, obs_module_text("Prop.SizeMode"),
+						       OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+	obs_property_list_add_string(size, obs_module_text("SizeMode.Fixed"), "fixed");
+	obs_property_list_add_string(size, obs_module_text("SizeMode.Auto"), "auto");
+	obs_property_set_modified_callback(size, layoutModified);
+	obs_property_t *fixedWidth =
+		obs_properties_add_int(props, kFixedWidth, obs_module_text("Prop.FixedWidth"), 100, 4000, 10);
+	obs_property_int_set_suffix(fixedWidth, " px");
+	obs_properties_add_int(props, kFixedRows, obs_module_text("Prop.FixedRows"), 1, 50, 1);
 	obs_properties_add_int(props, kMaxRows, obs_module_text("Prop.MaxRows"), 0, 100, 1);
 	obs_property_t *showHeader = obs_properties_add_bool(props, kShowHeader, obs_module_text("Prop.ShowHeader"));
 	obs_property_set_modified_callback(showHeader, layoutModified);

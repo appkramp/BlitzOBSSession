@@ -34,6 +34,12 @@ struct Table {
 	QStringList columnIds; // the layout id of each column, in display order
 	// Per column: it names the row (class, tier, name) rather than measuring it.
 	QList<bool> identity;
+	// Per column: the widest text it is expected to hold, for a table of fixed
+	// size — "8888", "888,8%", "VIII"; empty for the icon and the name.
+	QStringList samples;
+	// Per column: it takes the width left over in a table of fixed size (the
+	// name).
+	QList<bool> stretch;
 };
 
 struct TableOptions {

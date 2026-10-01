@@ -202,6 +202,18 @@ Table buildTable(const Layout &layout, const Session &session, const Catalog &ca
 	for (const Column *c : columns) {
 		table.columnIds.append(c->id);
 		table.identity.append(c->kind != Column::Kind::Value);
+		table.stretch.append(c->kind == Column::Kind::Name);
+		QString sample;
+		if (c->kind == Column::Kind::Tier) {
+			sample = QStringLiteral("VIII");
+		} else if (c->kind == Column::Kind::Value) {
+			// Four digits cover battles and damage, three a percentage.
+			sample = QString(c->suffix == QLatin1String("%") ? 3 : 4, QLatin1Char('8'));
+			if (c->decimals > 0)
+				sample += locale.decimalPoint() + QString(c->decimals, QLatin1Char('8'));
+			sample += c->suffix;
+		}
+		table.samples.append(sample);
 	}
 	if (columns.isEmpty())
 		return table;
