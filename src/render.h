@@ -36,12 +36,10 @@ struct Style {
 	// line above the table. Everything is centred then.
 	bool labelsInside = false;
 
-	// A table of fixed size, whatever the data: this wide, with room for this
-	// many rows. Columns are sized for the widest value they can expect, the
-	// name takes what is left and is shortened with an ellipsis. 0 and -1:
-	// sized to the content.
-	int fixedWidth = 0;
-	int fixedRows = -1;
+	// The least width of the table; 0 for as wide as the content. The name
+	// column takes what is left over; the table grows wider still when a name
+	// does not fit. Its height always follows the rows.
+	int minWidth = 0;
 
 	double opacity = 1.0; // of the whole overlay
 	int paddingX = 12;    // inside a block, left and right

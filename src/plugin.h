@@ -36,5 +36,8 @@ void registerOverlaySource();
 // Repaints every overlay source; called when the data, the catalogue or the
 // language changed.
 void renderAllSources();
+// Turns a source stretched in a scene into a wider table at scale 1, so the
+// font keeps the size set in the properties. Called on a timer.
+void normalizeSceneScales();
 
 } // namespace bss

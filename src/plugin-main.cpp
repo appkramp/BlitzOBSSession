@@ -30,6 +30,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <QAction>
 #include <QFile>
 #include <QHash>
+#include <QTimer>
 
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE(PLUGIN_NAME, "en-US")
@@ -153,6 +154,10 @@ void obs_module_post_load(void)
 	auto *action = static_cast<QAction *>(obs_frontend_add_tools_menu_qaction(obs_module_text("Menu.Settings")));
 	QObject::connect(action, &QAction::triggered, [] { openSettings(); });
 	obs_frontend_add_event_callback(onFrontendEvent, nullptr);
+
+	auto *scaleTimer = new QTimer(g_plugin->client);
+	QObject::connect(scaleTimer, &QTimer::timeout, [] { normalizeSceneScales(); });
+	scaleTimer->start(250);
 
 	g_plugin->catalog->refresh();
 	g_plugin->client->setConfig(Config::load());

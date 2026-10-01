@@ -63,7 +63,6 @@ QImage Renderer::render(const Table &table, const Style &style)
 			widths[i] = std::max(widths[i], w);
 		}
 	};
-	const bool fixed = style.fixedWidth > 0;
 	if (inside) {
 		QList<Cell> labels = table.header;
 		for (int i = 0; i < labels.size(); ++i)
@@ -73,52 +72,40 @@ QImage Renderer::render(const Table &table, const Style &style)
 	} else {
 		measure(table.header, header);
 	}
-	if (fixed) {
-		// Sized for what a column can hold, not for what it holds now.
-		QList<Cell> samples;
-		for (const QString &s : table.samples)
-			samples.append(Cell{Cell::Kind::Text, Cell::Align::Right, s});
-		measure(samples, total);
-		for (int i = 0; i < table.columns; ++i)
-			if (!table.stretch.value(i, false) && table.identity.value(i, false))
-				widths[i] = std::max(widths[i], iconSide);
-		// "Total" sits in a text column when the name is hidden.
-		QList<Cell> totalLabels = table.total;
-		for (int i = 0; i < totalLabels.size(); ++i)
-			if (!table.identity.value(i, false) || table.stretch.value(i, false))
-				totalLabels[i].text.clear();
-		measure(totalLabels, total);
-	} else {
-		for (const auto &row : table.rows)
-			measure(row, body);
-		measure(table.total, total);
-	}
+	for (const auto &row : table.rows)
+		measure(row, body);
+	measure(table.total, total);
+	// Number columns are as wide as the widest value they can expect, not the
+	// one they hold now, so the table does not twitch as 999 becomes 1000.
+	QList<Cell> samples;
+	for (const QString &s : table.samples)
+		samples.append(Cell{Cell::Kind::Text, Cell::Align::Right, s});
+	measure(samples, total);
 
 	int contentW = style.columnSpacing * std::max(0, table.columns - 1);
-	for (int i = 0; i < table.columns; ++i)
-		contentW += table.stretch.value(i, false) && fixed ? 0 : widths[i];
+	for (int w : widths)
+		contentW += w;
 
-	if (fixed) {
-		// The name takes what is left; without one, every column gets a share.
-		const int free = style.fixedWidth - 2 * padX - contentW;
+	// A width the streamer set is a minimum: the name column takes what is
+	// left over (every column a share when there is no name). A name wider
+	// than that makes the table wider; nothing is ever cut.
+	const int spare = style.minWidth - 2 * padX - contentW;
+	if (spare > 0 && table.columns > 0) {
 		const qsizetype stretchAt = table.stretch.indexOf(true);
 		if (stretchAt >= 0) {
-			const int minimum = body.horizontalAdvance(QStringLiteral("WWWW"));
-			widths[stretchAt] = std::max(free, minimum);
-			contentW += widths[stretchAt];
-		} else if (free > 0) {
+			widths[stretchAt] += spare;
+		} else {
 			for (int i = 0; i < table.columns; ++i)
-				widths[i] += free / table.columns;
-			contentW += free / table.columns * table.columns;
+				widths[i] += spare / table.columns;
 		}
+		contentW = style.minWidth - 2 * padX;
 	}
 
 	// Every data row is a block of the same height and the full width; the
 	// header sits above them, aligned with the blocks' contents.
 	const int blockH = lineH + labelH + 2 * padY;
-	const int rowSlots = style.fixedRows >= 0 ? style.fixedRows : static_cast<int>(table.rows.size());
-	const int blocks = rowSlots + (table.total.isEmpty() ? 0 : 1);
-	const int width = std::max(contentW + 2 * padX, fixed ? style.fixedWidth : 0);
+	const int blocks = static_cast<int>(table.rows.size()) + (table.total.isEmpty() ? 0 : 1);
+	const int width = std::max(contentW + 2 * padX, style.minWidth);
 	int height = blocks * blockH + std::max(0, blocks - 1) * gap;
 	if (headerH)
 		height += headerH + (blocks ? gap : 0);
@@ -192,13 +179,7 @@ QImage Renderer::render(const Table &table, const Style &style)
 								    ? Qt::AlignHCenter
 								    : Qt::AlignRight;
 				p.setPen(ink);
-				// A fixed-size table shortens a name that does not fit; numbers
-				// are never cut, the columns are sized for them.
-				const QString text =
-					fixed && table.stretch.value(i, false)
-						? QFontMetrics(font).elidedText(c.text, Qt::ElideRight, box.width())
-						: c.text;
-				p.drawText(box, static_cast<int>(align | Qt::AlignVCenter), text);
+				p.drawText(box, static_cast<int>(align | Qt::AlignVCenter), c.text);
 			}
 			x += widths[i] + style.columnSpacing;
 		}
@@ -223,8 +204,7 @@ QImage Renderer::render(const Table &table, const Style &style)
 		drawCells(table.header, y, headerH, headerFont, &style.header);
 		y += headerH + gap;
 	}
-	for (qsizetype r = 0; r < table.rows.size() && r < rowSlots; ++r) {
-		const auto &row = table.rows[r];
+	for (const auto &row : table.rows) {
 		drawBlock(y);
 		drawCells(row, y + padY, lineH, bodyFont, nullptr);
 		if (inside)
@@ -232,8 +212,6 @@ QImage Renderer::render(const Table &table, const Style &style)
 		y += blockH + gap;
 	}
 	if (!table.total.isEmpty()) {
-		// The total follows the rows; the room left for rows not yet played
-		// stays empty below it, so the image keeps its size.
 		drawBlock(y);
 		drawCells(table.total, y + padY, lineH, totalFont, &style.total);
 		if (inside)

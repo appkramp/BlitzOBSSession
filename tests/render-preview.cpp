@@ -1,6 +1,6 @@
 // Paints an overlay into a PNG, to look at the renderer without OBS.
 //
-//   render-preview <vehicles.json> <out.png> [ru|en|uk] [font px] [inside|top] [WIDTHxROWS]
+//   render-preview <vehicles.json> <out.png> [ru|en|uk] [font px] [inside|top] [min width]
 
 #include "core/table.h"
 #include "render.h"
@@ -77,11 +77,8 @@ int main(int argc, char **argv)
 			      {"winrate", QColor(110, 220, 120)}, {"tier", QColor(200, 206, 216)},
 			      {"accuracy", QColor(120, 190, 255)}};
 	style.labelsInside = argc > 5 && QByteArray(argv[5]) == "inside";
-	if (argc > 6) { // a fixed size: width x rows, e.g. 1100x8
-		const QList<QByteArray> size = QByteArray(argv[6]).split('x');
-		style.fixedWidth = size.value(0).toInt();
-		style.fixedRows = size.value(1).toInt();
-	}
+	if (argc > 6)
+		style.minWidth = atoi(argv[6]);
 	Renderer renderer(QStringLiteral(BSS_SOURCE_DIR "/data/icons"));
 	QImage image = renderer.render(table, style);
 
