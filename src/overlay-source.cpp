@@ -39,6 +39,7 @@ constexpr const char *kSortDir = "sort_dir";
 constexpr const char *kColumnOrder = "column_order";
 constexpr const char *kMaxRows = "max_rows";
 constexpr const char *kShowHeader = "show_header";
+constexpr const char *kHeaderPlace = "header_place";
 constexpr const char *kShowTotal = "show_total";
 constexpr const char *kFont = "font";
 constexpr const char *kColorHeader = "color_header";
@@ -210,6 +211,7 @@ void readSettings(OverlaySource &s, obs_data_t *settings)
 			st.columnColors.insert(c.id, toColor(obs_data_get_int(settings, colorKey(c.id).constData())));
 	}
 	st.header = toColor(obs_data_get_int(settings, kColorHeader));
+	st.labelsInside = QString::fromUtf8(obs_data_get_string(settings, kHeaderPlace)) == QLatin1String("inside");
 	st.total = toColor(obs_data_get_int(settings, kColorTotal));
 	// The block's colour and its transparency are set apart, as the streamer
 	// thinks of them.
@@ -289,6 +291,7 @@ void getDefaults(obs_data_t *settings)
 	obs_data_set_default_string(settings, kColumnOrder, "");
 	obs_data_set_default_int(settings, kMaxRows, 0);
 	obs_data_set_default_bool(settings, kShowHeader, true);
+	obs_data_set_default_string(settings, kHeaderPlace, "top");
 	obs_data_set_default_bool(settings, kShowTotal, true);
 	if (Plugin *p = plugin()) {
 		for (const Column &c : p->layout.columns())
@@ -334,6 +337,7 @@ bool layoutModified(obs_properties_t *props, obs_property_t *, obs_data_t *setti
 	obs_property_set_visible(obs_properties_get(props, kSortDir), !totals && sorted);
 	obs_property_set_visible(obs_properties_get(props, kMaxRows), !totals);
 	obs_property_set_visible(obs_properties_get(props, kShowTotal), !totals);
+	obs_property_set_visible(obs_properties_get(props, kHeaderPlace), obs_data_get_bool(settings, kShowHeader));
 	return true;
 }
 
@@ -423,7 +427,12 @@ obs_properties_t *getProperties(void *data)
 	obs_property_list_add_string(sortDir, obs_module_text("SortDir.Asc"), "asc");
 
 	obs_properties_add_int(props, kMaxRows, obs_module_text("Prop.MaxRows"), 0, 100, 1);
-	obs_properties_add_bool(props, kShowHeader, obs_module_text("Prop.ShowHeader"));
+	obs_property_t *showHeader = obs_properties_add_bool(props, kShowHeader, obs_module_text("Prop.ShowHeader"));
+	obs_property_set_modified_callback(showHeader, layoutModified);
+	obs_property_t *place = obs_properties_add_list(props, kHeaderPlace, obs_module_text("Prop.HeaderPlace"),
+							OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+	obs_property_list_add_string(place, obs_module_text("HeaderPlace.Top"), "top");
+	obs_property_list_add_string(place, obs_module_text("HeaderPlace.Inside"), "inside");
 	obs_properties_add_bool(props, kShowTotal, obs_module_text("Prop.ShowTotal"));
 
 	// The columns shown, in order, and the button that changes them.

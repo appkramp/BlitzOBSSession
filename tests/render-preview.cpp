@@ -1,6 +1,6 @@
 // Paints an overlay into a PNG, to look at the renderer without OBS.
 //
-//   render-preview <vehicles.json> <out.png> [ru|en|uk] [font px]
+//   render-preview <vehicles.json> <out.png> [ru|en|uk] [font px] [inside]
 
 #include "core/table.h"
 #include "render.h"
@@ -76,6 +76,7 @@ int main(int argc, char **argv)
 	style.columnColors = {{"name", QColor(255, 255, 255)},     {"damage", QColor(255, 170, 60)},
 			      {"winrate", QColor(110, 220, 120)}, {"tier", QColor(200, 206, 216)},
 			      {"accuracy", QColor(120, 190, 255)}};
+	style.labelsInside = argc > 5 && QByteArray(argv[5]) == "inside";
 	Renderer renderer(QStringLiteral(BSS_SOURCE_DIR "/data/icons"));
 	QImage image = renderer.render(table, style);
 

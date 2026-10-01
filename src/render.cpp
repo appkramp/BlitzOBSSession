@@ -37,10 +37,14 @@ QImage Renderer::render(const Table &table, const Style &style)
 	headerFont.setPixelSize(std::max(6, static_cast<int>(std::lround(style.font.pixelSize() * 0.8))));
 	QFont totalFont = style.font;
 	totalFont.setBold(true);
+	QFont labelFont = style.font;
+	labelFont.setPixelSize(std::max(6, static_cast<int>(std::lround(style.font.pixelSize() * 0.55))));
 
-	const QFontMetrics body(bodyFont), header(headerFont), total(totalFont);
+	const bool inside = style.labelsInside && !table.header.isEmpty();
+	const QFontMetrics body(bodyFont), header(headerFont), total(totalFont), label(labelFont);
 	const int lineH = std::max(body.height(), total.height());
-	const int headerH = table.header.isEmpty() ? 0 : header.height();
+	const int headerH = table.header.isEmpty() || inside ? 0 : header.height();
+	const int labelH = inside ? label.height() : 0;
 	const int iconSide = static_cast<int>(std::lround(lineH * 0.8));
 	const int border = std::max(0, style.borderWidth);
 	const int padX = std::max(0, style.paddingX) + border;
@@ -56,7 +60,7 @@ QImage Renderer::render(const Table &table, const Style &style)
 			widths[i] = std::max(widths[i], w);
 		}
 	};
-	measure(table.header, header);
+	measure(table.header, inside ? label : header);
 	for (const auto &row : table.rows)
 		measure(row, body);
 	measure(table.total, total);
@@ -67,7 +71,7 @@ QImage Renderer::render(const Table &table, const Style &style)
 
 	// Every data row is a block of the same height and the full width; the
 	// header sits above them, aligned with the blocks' contents.
-	const int blockH = lineH + 2 * padY;
+	const int blockH = lineH + labelH + 2 * padY;
 	const int blocks = static_cast<int>(table.rows.size()) + (table.total.isEmpty() ? 0 : 1);
 	const int width = contentW + 2 * padX;
 	int height = blocks * blockH + std::max(0, blocks - 1) * gap;
@@ -127,12 +131,26 @@ QImage Renderer::render(const Table &table, const Style &style)
 						    glyph);
 				}
 			} else if (!c.text.isEmpty()) {
-				const Qt::Alignment align = c.align == Cell::Align::Left     ? Qt::AlignLeft
-							    : c.align == Cell::Align::Center ? Qt::AlignHCenter
-											     : Qt::AlignRight;
+				const Qt::Alignment align = inside || c.align == Cell::Align::Center ? Qt::AlignHCenter
+							    : c.align == Cell::Align::Left                ? Qt::AlignLeft
+													  : Qt::AlignRight;
 				p.setPen(ink);
 				p.drawText(box, static_cast<int>(align | Qt::AlignVCenter), c.text);
 			}
+			x += widths[i] + style.columnSpacing;
+		}
+	};
+
+	// The column names under the values, small and centred.
+	auto drawLabels = [&](int y) {
+		p.setFont(labelFont);
+		p.setPen(style.header);
+		int x = padX;
+		for (int i = 0; i < table.header.size() && i < table.columns; ++i) {
+			const QString &text = table.header[i].text;
+			if (!text.isEmpty())
+				p.drawText(QRect(x, y, widths[i], labelH), static_cast<int>(Qt::AlignHCenter | Qt::AlignTop),
+					   text);
 			x += widths[i] + style.columnSpacing;
 		}
 	};
@@ -145,11 +163,15 @@ QImage Renderer::render(const Table &table, const Style &style)
 	for (const auto &row : table.rows) {
 		drawBlock(y);
 		drawCells(row, y + padY, lineH, bodyFont, nullptr);
+		if (inside)
+			drawLabels(y + padY + lineH);
 		y += blockH + gap;
 	}
 	if (!table.total.isEmpty()) {
 		drawBlock(y);
 		drawCells(table.total, y + padY, lineH, totalFont, &style.total);
+		if (inside)
+			drawLabels(y + padY + lineH);
 	}
 	p.end();
 	return image;

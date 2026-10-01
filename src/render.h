@@ -32,6 +32,10 @@ struct Style {
 	int borderWidth = 1;
 	int radius = 5;
 
+	// Column names under the values, inside every block, instead of a header
+	// line above the table. Everything is centred then.
+	bool labelsInside = false;
+
 	double opacity = 1.0; // of the whole overlay
 	int paddingX = 12;    // inside a block, left and right
 	int paddingY = 6;     // inside a block, top and bottom
