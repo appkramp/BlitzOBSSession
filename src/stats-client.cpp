@@ -211,7 +211,8 @@ void StatsClient::onText(const QByteArray &text)
 		} else if (m.errorCode == QLatin1String("realm_unavailable")) {
 			setState(State::RealmUnavailable, lastError_);
 		} else if (m.fatal) {
-			const int backoff = protocol::reconnectDelayMs(attempt_++, QRandomGenerator::global()->generateDouble());
+			const int backoff =
+				protocol::reconnectDelayMs(attempt_++, QRandomGenerator::global()->generateDouble());
 			scheduleReconnect(std::max(backoff, m.retryAfter * 1000));
 		}
 		break;

@@ -216,8 +216,8 @@ void readSettings(OverlaySource &s, obs_data_t *settings)
 	// The block's colour and its transparency are set apart, as the streamer
 	// thinks of them.
 	st.block = toColor(obs_data_get_int(settings, kBlockColor));
-	st.block.setAlphaF(static_cast<float>(std::clamp<long long>(obs_data_get_int(settings, kBlockOpacity), 0, 100)) /
-			   100.0f);
+	st.block.setAlphaF(
+		static_cast<float>(std::clamp<long long>(obs_data_get_int(settings, kBlockOpacity), 0, 100)) / 100.0f);
 	st.border = toColor(obs_data_get_int(settings, kBorderColor));
 	st.borderWidth = static_cast<int>(obs_data_get_int(settings, kBorderWidth));
 	st.radius = static_cast<int>(obs_data_get_int(settings, kCornerRadius));
@@ -309,7 +309,8 @@ void getDefaults(obs_data_t *settings)
 	const Style st;
 	if (Plugin *p = plugin()) {
 		for (const Column &c : p->layout.columns())
-			obs_data_set_default_int(settings, colorKey(c.id).constData(), fromColor(defaultColumnColor(c)));
+			obs_data_set_default_int(settings, colorKey(c.id).constData(),
+						 fromColor(defaultColumnColor(c)));
 	}
 	obs_data_set_default_int(settings, kColorHeader, fromColor(st.header));
 	obs_data_set_default_int(settings, kColorTotal, fromColor(st.total));
@@ -354,7 +355,8 @@ bool editColumns(obs_properties_t *, obs_property_t *, void *priv)
 	for (const QString &id : columnOrder(p->layout, settings)) {
 		for (const Column &c : p->layout.columns())
 			if (c.id == id)
-				items.append({id, columnLabel(c), obs_data_get_bool(settings, columnKey(id).constData())});
+				items.append(
+					{id, columnLabel(c), obs_data_get_bool(settings, columnKey(id).constData())});
 	}
 
 	ColumnsDialog dialog(items, QApplication::activeWindow());
@@ -528,12 +530,14 @@ void videoRender(void *data, gs_effect_t *effect)
 			const auto w = static_cast<uint32_t>(image.width());
 			const auto h = static_cast<uint32_t>(image.height());
 			const uint8_t *bits = image.constBits();
-			if (s.texture && (gs_texture_get_width(s.texture) != w || gs_texture_get_height(s.texture) != h)) {
+			if (s.texture &&
+			    (gs_texture_get_width(s.texture) != w || gs_texture_get_height(s.texture) != h)) {
 				gs_texture_destroy(s.texture);
 				s.texture = nullptr;
 			}
 			if (s.texture)
-				gs_texture_set_image(s.texture, bits, static_cast<uint32_t>(image.bytesPerLine()), false);
+				gs_texture_set_image(s.texture, bits, static_cast<uint32_t>(image.bytesPerLine()),
+						     false);
 			else
 				s.texture = gs_texture_create(w, h, GS_RGBA, 1, &bits, GS_DYNAMIC);
 		}

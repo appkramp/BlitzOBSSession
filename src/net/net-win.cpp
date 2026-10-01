@@ -148,10 +148,10 @@ private:
 
 		DWORD status = 0;
 		DWORD size = sizeof(status);
-		const bool upgraded =
-			WinHttpSetOption(request, WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET, nullptr, 0) &&
-			WinHttpSendRequest(request, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) &&
-			WinHttpReceiveResponse(request, nullptr);
+		const bool upgraded = WinHttpSetOption(request, WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET, nullptr, 0) &&
+				      WinHttpSendRequest(request, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
+							 WINHTTP_NO_REQUEST_DATA, 0, 0, 0) &&
+				      WinHttpReceiveResponse(request, nullptr);
 		if (!upgraded) {
 			const DWORD err = GetLastError();
 			WinHttpCloseHandle(request);
@@ -188,8 +188,8 @@ private:
 		for (;;) {
 			DWORD read = 0;
 			WINHTTP_WEB_SOCKET_BUFFER_TYPE type;
-			const DWORD err = WinHttpWebSocketReceive(socket, buffer.data(), static_cast<DWORD>(buffer.size()),
-								  &read, &type);
+			const DWORD err = WinHttpWebSocketReceive(socket, buffer.data(),
+								  static_cast<DWORD>(buffer.size()), &read, &type);
 			{
 				std::lock_guard<std::mutex> lock(conn->mu);
 				if (conn->closing)
@@ -259,8 +259,8 @@ void get(const QUrl &url, QObject *context, Callback done)
 								 WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
 								 target.secure ? WINHTTP_FLAG_SECURE : 0)
 					    : nullptr;
-		if (request && WinHttpSendRequest(request, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0,
-						  0, 0) &&
+		if (request &&
+		    WinHttpSendRequest(request, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) &&
 		    WinHttpReceiveResponse(request, nullptr)) {
 			DWORD code = 0;
 			DWORD size = sizeof(code);

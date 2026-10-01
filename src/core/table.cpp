@@ -155,7 +155,8 @@ void sortRows(QList<RowData> &rows, const Layout &layout, const Catalog &catalog
 		case Column::Kind::ClassIcon:
 			return threeWay(classRank(a.type), classRank(b.type));
 		case Column::Kind::Name:
-			return rowName(a, catalog, options.language).localeAwareCompare(rowName(b, catalog, options.language));
+			return rowName(a, catalog, options.language)
+				.localeAwareCompare(rowName(b, catalog, options.language));
 		}
 		return 0;
 	};

@@ -32,7 +32,7 @@ Config Config::load()
 	c.key = o.value(QStringLiteral("key")).toString();
 	c.realm = o.value(QStringLiteral("realm")).toString(c.realm);
 	c.period = o.value(QStringLiteral("period")).toString() == QLatin1String("since") ? Period::Since
-											   : Period::Today;
+											  : Period::Today;
 	c.since = QDateTime::fromString(o.value(QStringLiteral("since")).toString(), Qt::ISODate);
 	c.language = o.value(QStringLiteral("language")).toString(c.language);
 	c.server = o.value(QStringLiteral("server")).toString(c.server);

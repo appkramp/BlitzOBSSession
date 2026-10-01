@@ -222,10 +222,10 @@ void SettingsDialog::updateStatus()
 	}
 	if (client.state() == StatsClient::State::Live || client.state() == StatsClient::State::Loading) {
 		const int battles = static_cast<int>(client.session().totals().value(QStringLiteral("battles")));
-		text += QLatin1Char('\n') + uiText("Status.Summary")
-						    .arg(battles)
-						    .arg(QLocale().toString(client.periodStart().toLocalTime(),
-									    QLocale::ShortFormat));
+		text += QLatin1Char('\n') +
+			uiText("Status.Summary")
+				.arg(battles)
+				.arg(QLocale().toString(client.periodStart().toLocalTime(), QLocale::ShortFormat));
 	}
 	status_->setText(text);
 }

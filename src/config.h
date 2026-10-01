@@ -17,7 +17,7 @@ struct Config {
 	QString realm = QStringLiteral("eu"); // eu, com, asia
 	enum class Period { Today, Since };
 	Period period = Period::Today;
-	QDateTime since;                          // for Period::Since, local time
+	QDateTime since;                           // for Period::Since, local time
 	QString language = QStringLiteral("auto"); // auto, ru, en, uk — of the overlay text
 	QString server = QString::fromLatin1(kDefaultServer);
 

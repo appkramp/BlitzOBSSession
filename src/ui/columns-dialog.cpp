@@ -26,7 +26,8 @@ ColumnsDialog::ColumnsDialog(const QList<Item> &items, QWidget *parent) : QDialo
 	for (const Item &it : items) {
 		auto *row = new QListWidgetItem(it.label, list_);
 		row->setData(Qt::UserRole, it.id);
-		row->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsUserCheckable | Qt::ItemIsDragEnabled);
+		row->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable | Qt::ItemIsUserCheckable |
+			      Qt::ItemIsDragEnabled);
 		row->setCheckState(it.visible ? Qt::Checked : Qt::Unchecked);
 	}
 	list_->setCurrentRow(0);

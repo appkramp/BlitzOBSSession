@@ -39,7 +39,9 @@ private:
 class Binary : public Expression {
 public:
 	Binary(QChar op, std::shared_ptr<const Expression> l, std::shared_ptr<const Expression> r)
-		: op_(op), l_(std::move(l)), r_(std::move(r))
+		: op_(op),
+		  l_(std::move(l)),
+		  r_(std::move(r))
 	{
 	}
 

@@ -21,16 +21,16 @@ class StatsClient : public QObject {
 
 public:
 	enum class State {
-		NoKey,            // nothing to connect with
-		Connecting,       // socket opening or hello sent
-		Loading,          // subscribed, history arriving
-		Live,             // history complete, new battles pushed
-		Waiting,          // disconnected, reconnecting after a delay
-		RealmUnavailable, // connected, but the key does not open this realm
+		NoKey,              // nothing to connect with
+		Connecting,         // socket opening or hello sent
+		Loading,            // subscribed, history arriving
+		Live,               // history complete, new battles pushed
+		Waiting,            // disconnected, reconnecting after a delay
+		RealmUnavailable,   // connected, but the key does not open this realm
 		TooManyConnections, // the key is in use elsewhere up to its limit; retrying
-		KeyInvalid,       // stopped until the key is changed
-		KeyExpired,       // stopped; tried again hourly
-		Outdated,         // the server wants a newer plugin
+		KeyInvalid,         // stopped until the key is changed
+		KeyExpired,         // stopped; tried again hourly
+		Outdated,           // the server wants a newer plugin
 	};
 
 	explicit StatsClient(QObject *parent = nullptr);

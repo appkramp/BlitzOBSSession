@@ -21,7 +21,8 @@ QSvgRenderer *Renderer::icon(const QString &type)
 		return nullptr;
 	auto it = icons_.find(type);
 	if (it == icons_.end()) {
-		auto svg = std::make_shared<QSvgRenderer>(QDir(iconDir_).filePath(QStringLiteral("class-%1.svg").arg(type)));
+		auto svg = std::make_shared<QSvgRenderer>(
+			QDir(iconDir_).filePath(QStringLiteral("class-%1.svg").arg(type)));
 		it = icons_.insert(type, svg->isValid() ? svg : nullptr);
 	}
 	return it.value().get();
@@ -114,7 +115,9 @@ QImage Renderer::render(const Table &table, const Style &style)
 
 	// Class, tier and name carry no label inside the blocks; they sit in the
 	// middle of the block's height instead of on the values' line.
-	auto isIdentity = [&](int i) { return inside && table.identity.value(i, false); };
+	auto isIdentity = [&](int i) {
+		return inside && table.identity.value(i, false);
+	};
 
 	// `color` overrides the per-column colours (header, total row).
 	auto drawCells = [&](const QList<Cell> &row, int y, int h, const QFont &font, const QColor *color) {
@@ -124,14 +127,17 @@ QImage Renderer::render(const Table &table, const Style &style)
 			const Cell &c = row[i];
 			const QString id = table.columnIds.value(i);
 			const QColor ink = color ? *color : style.columnColors.value(id, style.text);
-			const QRect box = isIdentity(i) ? QRect(x, y, widths[i], h + labelH) : QRect(x, y, widths[i], h);
+			const QRect box = isIdentity(i) ? QRect(x, y, widths[i], h + labelH)
+							: QRect(x, y, widths[i], h);
 			if (c.kind == Cell::Kind::ClassIcon) {
 				if (QSvgRenderer *svg = icon(c.text)) {
 					// Keep the icon's own proportions inside the square.
 					const QSizeF natural = svg->defaultSize();
-					const double k = std::min(iconSide / natural.width(), iconSide / natural.height());
-					const QSize size(std::max(1, static_cast<int>(std::lround(natural.width() * k))),
-							 std::max(1, static_cast<int>(std::lround(natural.height() * k))));
+					const double k =
+						std::min(iconSide / natural.width(), iconSide / natural.height());
+					const QSize size(
+						std::max(1, static_cast<int>(std::lround(natural.width() * k))),
+						std::max(1, static_cast<int>(std::lround(natural.height() * k))));
 					QImage glyph(size, QImage::Format_ARGB32_Premultiplied);
 					glyph.fill(Qt::transparent);
 					{
@@ -146,8 +152,8 @@ QImage Renderer::render(const Table &table, const Style &style)
 				}
 			} else if (!c.text.isEmpty()) {
 				const Qt::Alignment align = inside || c.align == Cell::Align::Center ? Qt::AlignHCenter
-							    : c.align == Cell::Align::Left                ? Qt::AlignLeft
-													  : Qt::AlignRight;
+							    : c.align == Cell::Align::Left           ? Qt::AlignLeft
+												     : Qt::AlignRight;
 				p.setPen(ink);
 				p.drawText(box, static_cast<int>(align | Qt::AlignVCenter), c.text);
 			}
@@ -163,8 +169,8 @@ QImage Renderer::render(const Table &table, const Style &style)
 		for (int i = 0; i < table.header.size() && i < table.columns; ++i) {
 			const QString &text = table.header[i].text;
 			if (!text.isEmpty() && !isIdentity(i))
-				p.drawText(QRect(x, y, widths[i], labelH), static_cast<int>(Qt::AlignHCenter | Qt::AlignTop),
-					   text);
+				p.drawText(QRect(x, y, widths[i], labelH),
+					   static_cast<int>(Qt::AlignHCenter | Qt::AlignTop), text);
 			x += widths[i] + style.columnSpacing;
 		}
 	};

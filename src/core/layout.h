@@ -28,8 +28,8 @@ struct Column {
 
 	QString id;
 	Kind kind = Kind::Value;
-	QString header;       // locale key of the column header; empty for none
-	QString label;        // locale key naming the column in the settings
+	QString header; // locale key of the column header; empty for none
+	QString label;  // locale key naming the column in the settings
 	std::shared_ptr<const Expression> expr;
 	int decimals = 0;
 	QString suffix;

@@ -98,7 +98,7 @@ QString overlayLanguage()
 	QString lang = g_plugin && g_plugin->client ? g_plugin->client->config().language : QStringLiteral("auto");
 	if (lang == QLatin1String("auto")) {
 		const QString obs = QString::fromUtf8(obs_get_locale());
-		lang = obs.startsWith(QLatin1String("ru")) ? QStringLiteral("ru")
+		lang = obs.startsWith(QLatin1String("ru"))   ? QStringLiteral("ru")
 		       : obs.startsWith(QLatin1String("uk")) ? QStringLiteral("uk")
 							     : QStringLiteral("en");
 	}

@@ -40,11 +40,11 @@ struct TableOptions {
 	enum class Rows { All, Selected, TotalsOnly };
 
 	Rows rows = Rows::All;
-	QString sortBy;           // a column id; empty: the most recently played first
-	bool ascending = false;   // for sortBy
-	int maxRows = 0;          // 0: no limit
-	QSet<int> selectedTanks;  // for Rows::Selected
-	QStringList columns;      // ids of the visible columns, in display order
+	QString sortBy;          // a column id; empty: the most recently played first
+	bool ascending = false;  // for sortBy
+	int maxRows = 0;         // 0: no limit
+	QSet<int> selectedTanks; // for Rows::Selected
+	QStringList columns;     // ids of the visible columns, in display order
 	bool showHeader = true;
 	bool showTotal = true;
 	QString language = QStringLiteral("en"); // ru, en, uk

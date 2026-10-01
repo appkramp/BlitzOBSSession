@@ -55,7 +55,10 @@ target_compile_options(
   ${CMAKE_PROJECT_NAME}
   PRIVATE $<$<C_COMPILER_ID:Clang,AppleClang>:-Wno-quoted-include-in-framework-header -Wno-comma>
 )
-set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES AUTOMOC ON AUTOUIC ON AUTORCC ON)
+set_target_properties(
+  ${CMAKE_PROJECT_NAME}
+  PROPERTIES AUTOMOC ON AUTOUIC ON AUTORCC ON
+)
 
 target_sources(
   ${CMAKE_PROJECT_NAME}
@@ -104,7 +107,8 @@ if(BSS_BUILD_TESTS AND NOT CMAKE_CROSSCOMPILING)
     # The Qt frameworks are the ones in .deps, not installed anywhere.
     get_filename_component(_qt_lib_dir "${Qt6_DIR}/../.." ABSOLUTE)
     set_target_properties(
-      bss-core-tests bss-render-preview
+      bss-core-tests
+      bss-render-preview
       PROPERTIES
         BUILD_RPATH "${_qt_lib_dir}"
         XCODE_ATTRIBUTE_LD_RUNPATH_SEARCH_PATHS "${_qt_lib_dir}"
