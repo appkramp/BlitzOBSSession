@@ -2,8 +2,10 @@
 
 #include "net/websocket.h"
 
-#include <plugin-support.h>
+// obs-module.h first: it declares blogva as imported from libobs, which MSVC
+// will not accept after plugin-support.h's plain declaration.
 #include <obs-module.h>
+#include <plugin-support.h>
 
 #include <QRandomGenerator>
 #include <QUrl>
