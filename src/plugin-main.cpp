@@ -157,7 +157,7 @@ void obs_module_post_load(void)
 
 	auto *scaleTimer = new QTimer(g_plugin->client);
 	QObject::connect(scaleTimer, &QTimer::timeout, [] { normalizeSceneScales(); });
-	scaleTimer->start(250);
+	scaleTimer->start(100);
 
 	g_plugin->catalog->refresh();
 	g_plugin->client->setConfig(Config::load());

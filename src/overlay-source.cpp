@@ -20,6 +20,7 @@
 #include <plugin-support.h>
 
 #include <QApplication>
+#include <QGuiApplication>
 #include <QDateTime>
 #include <QHash>
 #include <QSet>
@@ -701,8 +702,12 @@ void normalizeSceneScales()
 		},
 		&scan);
 
-	// A scale held still for this long is a finished drag, not one in progress.
-	constexpr qint64 kSettleMs = 400;
+	// Nothing is applied while a mouse button is down: during a drag OBS keeps
+	// computing the scale from where the drag began, and a table rebuilt under
+	// the cursor makes the frame jump. Once released, the scale has to have
+	// held still briefly — a value typed in the Transform dialog arrives too.
+	constexpr qint64 kSettleMs = 150;
+	const bool dragging = QGuiApplication::mouseButtons() != Qt::NoButton;
 	static QHash<quintptr, PendingScale> pending;
 	QSet<quintptr> seen;
 	const qint64 now = QDateTime::currentMSecsSinceEpoch();
@@ -722,7 +727,7 @@ void normalizeSceneScales()
 			pending.insert(key, {scale, now});
 			continue;
 		}
-		if (now - it->since < kSettleMs)
+		if (dragging || now - it->since < kSettleMs)
 			continue;
 
 		// Resizing the source in the scene means a wider table, not a larger
