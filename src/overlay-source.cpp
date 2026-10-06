@@ -45,6 +45,7 @@ constexpr const char *kAccountRealm = "account_realm";
 constexpr const char *kStyleFrom = "style_from";
 constexpr const char *kShowNickname = "show_nickname";
 constexpr const char *kColorNickname = "color_nickname";
+constexpr const char *kNicknameFont = "nickname_font";
 
 constexpr const char *kRows = "rows";
 constexpr const char *kSortBy = "sort_by";
@@ -144,6 +145,51 @@ const char *defaultFontFace()
 #endif
 }
 
+// An OBS font property: face, style, pixel size and the bold / italic /
+// underline / strikeout flags.
+QFont readFont(obs_data_t *settings, const char *key)
+{
+	obs_data_t *data = obs_data_get_obj(settings, key);
+	QFont font(QString::fromUtf8(obs_data_get_string(data, "face")));
+	font.setStyleName(QString::fromUtf8(obs_data_get_string(data, "style")));
+	font.setPixelSize(std::max(6, static_cast<int>(obs_data_get_int(data, "size"))));
+	const long long flags = obs_data_get_int(data, "flags");
+	font.setBold(flags & OBS_FONT_BOLD);
+	font.setItalic(flags & OBS_FONT_ITALIC);
+	font.setUnderline(flags & OBS_FONT_UNDERLINE);
+	font.setStrikeOut(flags & OBS_FONT_STRIKEOUT);
+	obs_data_release(data);
+	return font;
+}
+
+void setDefaultFont(obs_data_t *settings, const char *key, int size, long long flags)
+{
+	obs_data_t *font = obs_data_create();
+	obs_data_set_default_string(font, "face", defaultFontFace());
+	obs_data_set_default_string(font, "style", flags & OBS_FONT_BOLD ? "Bold" : "Regular");
+	obs_data_set_default_int(font, "size", size);
+	obs_data_set_default_int(font, "flags", flags);
+	obs_data_set_default_obj(settings, key, font);
+	obs_data_release(font);
+}
+
+// The nickname's settings, the same on a main source and on a copy.
+void nicknameDefaults(obs_data_t *settings)
+{
+	obs_data_set_default_bool(settings, kShowNickname, true);
+	setDefaultFont(settings, kNicknameFont, 28, OBS_FONT_BOLD);
+	obs_data_set_default_int(settings, kColorNickname, fromColor(QColor(255, 255, 255)));
+}
+
+void addNicknameGroup(obs_properties_t *props)
+{
+	obs_properties_t *group = obs_properties_create();
+	obs_properties_add_bool(group, kShowNickname, obs_module_text("Prop.ShowNickname"));
+	obs_properties_add_font(group, kNicknameFont, obs_module_text("Prop.NicknameFont"));
+	obs_properties_add_color_alpha(group, kColorNickname, obs_module_text("Prop.ColorNickname"));
+	obs_properties_add_group(props, "nickname", obs_module_text("Prop.Nickname"), OBS_GROUP_NORMAL, group);
+}
+
 struct OverlaySource {
 	obs_source_t *source = nullptr;
 	bool isCopy = false;
@@ -151,7 +197,12 @@ struct OverlaySource {
 	std::mutex mu;
 	TableOptions options;
 	Style style;
-	bool showNickname = true;
+	// The nickname above the table: each source's own, a copy's too.
+	struct {
+		bool show = true;
+		QFont font;
+		QColor color;
+	} nickname;
 	AccountRef account; // a copy's account; the key's own for a main source
 	QString styleFrom;  // a copy: the uuid of the main source it looks like; empty for the first
 	QImage pending;
@@ -204,26 +255,31 @@ void renderSource(OverlaySource &s)
 	TableOptions options;
 	Style style;
 	bool showNickname = true;
+	QFont nicknameFont;
+	QColor nicknameColor;
 	AccountRef account;
 	QString styleFrom;
 	{
 		std::lock_guard<std::mutex> lock(s.mu);
 		options = s.options;
 		style = s.style;
-		showNickname = s.showNickname;
+		showNickname = s.nickname.show;
+		nicknameFont = s.nickname.font;
+		nicknameColor = s.nickname.color;
 		account = s.account;
 		styleFrom = s.styleFrom;
 	}
 	if (s.isCopy) {
-		// Everything about the look is the main source's.
+		// Everything about the look is the main source's, but the nickname.
 		const auto main = mainFor(styleFrom);
 		if (!main)
 			return;
 		std::lock_guard<std::mutex> lock(main->mu);
 		options = main->options;
 		style = main->style;
-		showNickname = main->showNickname;
 	}
+	style.captionFont = nicknameFont;
+	style.caption = nicknameColor;
 	options.language = overlayLanguage();
 
 	static const Session empty;
@@ -289,16 +345,7 @@ void readSettings(OverlaySource &s, obs_data_t *settings)
 	}
 
 	Style st;
-	obs_data_t *font = obs_data_get_obj(settings, kFont);
-	st.font = QFont(QString::fromUtf8(obs_data_get_string(font, "face")));
-	st.font.setStyleName(QString::fromUtf8(obs_data_get_string(font, "style")));
-	st.font.setPixelSize(std::max(6, static_cast<int>(obs_data_get_int(font, "size"))));
-	const long long flags = obs_data_get_int(font, "flags");
-	st.font.setBold(flags & OBS_FONT_BOLD);
-	st.font.setItalic(flags & OBS_FONT_ITALIC);
-	st.font.setUnderline(flags & OBS_FONT_UNDERLINE);
-	st.font.setStrikeOut(flags & OBS_FONT_STRIKEOUT);
-	obs_data_release(font);
+	st.font = readFont(settings, kFont);
 
 	if (Plugin *p = plugin()) {
 		for (const Column &c : p->layout.columns()) {
@@ -308,7 +355,6 @@ void readSettings(OverlaySource &s, obs_data_t *settings)
 		}
 	}
 	st.header = toColor(obs_data_get_int(settings, kColorHeader));
-	st.caption = toColor(obs_data_get_int(settings, kColorNickname));
 	st.labelsInside = QString::fromUtf8(obs_data_get_string(settings, kHeaderPlace)) == QLatin1String("inside");
 	st.minWidth = static_cast<int>(obs_data_get_int(settings, kWidth));
 	st.total = toColor(obs_data_get_int(settings, kColorTotal));
@@ -329,7 +375,9 @@ void readSettings(OverlaySource &s, obs_data_t *settings)
 	std::lock_guard<std::mutex> lock(s.mu);
 	s.options = o;
 	s.style = st;
-	s.showNickname = obs_data_get_bool(settings, kShowNickname);
+	s.nickname.show = obs_data_get_bool(settings, kShowNickname);
+	s.nickname.font = readFont(settings, kNicknameFont);
+	s.nickname.color = toColor(obs_data_get_int(settings, kColorNickname));
 }
 
 // The accounts the copies show go to the client, which subscribes to them.
@@ -370,6 +418,9 @@ void readCopySettings(OverlaySource &s, obs_data_t *settings)
 	s.account.id = ok && id > 0 ? id : 0;
 	s.account.realm = QString::fromUtf8(obs_data_get_string(settings, kAccountRealm));
 	s.styleFrom = QString::fromUtf8(obs_data_get_string(settings, kStyleFrom));
+	s.nickname.show = obs_data_get_bool(settings, kShowNickname);
+	s.nickname.font = readFont(settings, kNicknameFont);
+	s.nickname.color = toColor(obs_data_get_int(settings, kColorNickname));
 }
 
 std::shared_ptr<OverlaySource> *holder(void *data)
@@ -438,7 +489,7 @@ void getDefaults(obs_data_t *settings)
 	obs_data_set_default_bool(settings, kShowHeader, true);
 	obs_data_set_default_string(settings, kHeaderPlace, "top");
 	obs_data_set_default_bool(settings, kShowTotal, true);
-	obs_data_set_default_bool(settings, kShowNickname, true);
+	nicknameDefaults(settings);
 	if (Plugin *p = plugin()) {
 		for (const Column &c : p->layout.columns())
 			obs_data_set_default_bool(settings, columnKey(c.id).constData(), c.visibleByDefault);
@@ -459,7 +510,6 @@ void getDefaults(obs_data_t *settings)
 						 fromColor(defaultColumnColor(c)));
 	}
 	obs_data_set_default_int(settings, kColorHeader, fromColor(st.header));
-	obs_data_set_default_int(settings, kColorNickname, fromColor(st.caption));
 	obs_data_set_default_int(settings, kColorTotal, fromColor(st.total));
 	QColor block = st.block;
 	block.setAlpha(255);
@@ -628,7 +678,6 @@ obs_properties_t *getProperties(void *data)
 	obs_property_int_set_suffix(width, " px");
 	obs_property_set_long_description(width, obs_module_text("Prop.WidthHint"));
 	obs_properties_add_int(props, kMaxRows, obs_module_text("Prop.MaxRows"), 0, 100, 1);
-	obs_properties_add_bool(props, kShowNickname, obs_module_text("Prop.ShowNickname"));
 	obs_property_t *showHeader = obs_properties_add_bool(props, kShowHeader, obs_module_text("Prop.ShowHeader"));
 	obs_property_set_modified_callback(showHeader, layoutModified);
 	obs_property_t *place = obs_properties_add_list(props, kHeaderPlace, obs_module_text("Prop.HeaderPlace"),
@@ -657,9 +706,10 @@ obs_properties_t *getProperties(void *data)
 	}
 	obs_properties_add_group(props, "columns", obs_module_text("Prop.Columns"), OBS_GROUP_NORMAL, columns);
 
+	addNicknameGroup(props);
+
 	obs_properties_t *look = obs_properties_create();
 	obs_properties_add_font(look, kFont, obs_module_text("Prop.Font"));
-	obs_properties_add_color_alpha(look, kColorNickname, obs_module_text("Prop.ColorNickname"));
 	obs_properties_add_color_alpha(look, kColorHeader, obs_module_text("Prop.ColorHeader"));
 	obs_properties_add_color_alpha(look, kColorTotal, obs_module_text("Prop.ColorTotal"));
 	obs_properties_add_int(look, kColumnSpacing, obs_module_text("Prop.ColumnSpacing"), 0, 200, 1);
@@ -796,6 +846,7 @@ void getCopyDefaults(obs_data_t *settings)
 	obs_data_set_default_string(settings, kAccountId, "");
 	obs_data_set_default_string(settings, kAccountRealm, "eu");
 	obs_data_set_default_string(settings, kStyleFrom, "");
+	nicknameDefaults(settings);
 }
 
 // What the server says about the copy's account, for its properties.
@@ -865,6 +916,7 @@ obs_properties_t *getCopyProperties(void *data)
 			ref = s->account;
 		}
 		obs_properties_add_text(props, "copy_status", copyStatus(ref).toUtf8().constData(), OBS_TEXT_INFO);
+		addNicknameGroup(props);
 		obs_properties_add_button2(
 			props, "copy_refresh", obs_module_text("Prop.RefreshTanks"),
 			[](obs_properties_t *, obs_property_t *, void *) { return true; }, nullptr);

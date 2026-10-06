@@ -27,6 +27,7 @@ struct Style {
 	QColor header = QColor(180, 190, 200);
 	QColor total = QColor(255, 204, 64);    // every cell of the total row
 	QColor caption = QColor(255, 255, 255); // the nickname above the table
+	QFont captionFont;                      // its font; without a pixel size, the body's in bold
 	// Value-dependent colours per column id; they win over the colours above
 	// wherever a number is shown, the total row included.
 	QHash<QString, QList<ValueRange>> ranges;

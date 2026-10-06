@@ -49,8 +49,11 @@ QImage Renderer::render(const Table &table, const Style &style)
 	const int lineH = std::max(body.height(), total.height());
 	const int headerH = table.header.isEmpty() || inside ? 0 : header.height();
 	const int labelH = inside ? label.height() : 0;
-	QFont captionFont = style.font;
-	captionFont.setBold(true);
+	QFont captionFont = style.captionFont;
+	if (captionFont.pixelSize() <= 0) {
+		captionFont = style.font;
+		captionFont.setBold(true);
+	}
 	const QFontMetrics caption(captionFont);
 	const int captionH = table.caption.isEmpty() ? 0 : caption.height();
 	const int iconSide = static_cast<int>(std::lround(lineH * 0.8));

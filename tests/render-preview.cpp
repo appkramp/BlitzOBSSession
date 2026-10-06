@@ -68,7 +68,7 @@ int main(int argc, char **argv)
 		if (c.visibleByDefault)
 			o.columns << c.id;
 	Table table = buildTable(layout, session, catalog, o,
-				       [&](const QString &k) { return ru.value(k, k.section('.', -1)); });
+				 [&](const QString &k) { return ru.value(k, k.section('.', -1)); });
 
 	table.caption = qEnvironmentVariable("BSS_CAPTION");
 	Style style;
