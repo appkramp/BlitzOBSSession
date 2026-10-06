@@ -32,5 +32,6 @@
 /tools/mockserver/mockserver
 /tools/obsshot/obsshot
 
-# Markdown stays out of the repository
+# Markdown stays out of the repository, but the README
 *.md
+!/README.md
