@@ -1,6 +1,8 @@
 #include "render.h"
 
 #include <QDir>
+#include <QFileInfo>
+#include <QImageReader>
 #include <QFontMetrics>
 #include <QPainter>
 #include <QPainterPath>
@@ -28,7 +30,7 @@ QSvgRenderer *Renderer::icon(const QString &type)
 	return it.value().get();
 }
 
-QImage Renderer::render(const Table &table, const Style &style)
+QImage Renderer::renderTable(const Table &table, const Style &style)
 {
 	if (table.columns == 0 ||
 	    (table.header.isEmpty() && table.rows.isEmpty() && table.total.isEmpty() && table.caption.isEmpty()))
@@ -248,6 +250,100 @@ QImage Renderer::render(const Table &table, const Style &style)
 		if (inside)
 			drawLabels(y + padY + lineH);
 	}
+	p.end();
+	return image;
+}
+
+QImage Renderer::logo(const Logo &l)
+{
+	if (!l.show || l.path.isEmpty())
+		return QImage();
+	const QFileInfo file(l.path);
+	const qint64 stamp = file.exists() ? file.lastModified().toMSecsSinceEpoch() : -1;
+	QImageReader reader(l.path);
+	reader.setAutoTransform(true);
+	// An SVG has no size of its own worth keeping: it is read at the box's.
+	const bool vector = reader.format() == "svg" && l.mode != Logo::Mode::Original;
+	const QString key = vector ? QStringLiteral("%1|%2x%3").arg(l.path).arg(l.width).arg(l.height) : l.path;
+	CachedLogo &cached = logos_[key];
+	if (cached.stamp != stamp) {
+		if (vector)
+			reader.setScaledSize(
+				reader.size().scaled(std::max(1, l.width), std::max(1, l.height), Qt::KeepAspectRatio));
+		cached.stamp = stamp;
+		cached.image = stamp < 0 ? QImage() : reader.read();
+	}
+	const QImage &source = cached.image;
+	if (source.isNull())
+		return QImage();
+
+	const QSize box(std::max(1, l.width), std::max(1, l.height));
+	switch (l.mode) {
+	case Logo::Mode::Fit:
+		return source.scaled(box, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+	case Logo::Mode::Stretch:
+		return source.scaled(box, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+	case Logo::Mode::Original:
+		break;
+	}
+	return source;
+}
+
+QImage Renderer::render(const Table &table, const Style &style, int *tableWidth)
+{
+	const QImage body = renderTable(table, style);
+	if (tableWidth)
+		*tableWidth = body.width();
+	const QImage pic = logo(style.logo);
+	if (pic.isNull())
+		return body;
+
+	const Logo &l = style.logo;
+	const int gap = body.isNull() ? 0 : std::max(0, l.gap);
+	const bool beside = l.side == Logo::Side::Left || l.side == Logo::Side::Right;
+	const QSize b = body.isNull() ? QSize(0, 0) : body.size();
+	const QSize size = beside ? QSize(pic.width() + gap + b.width(), std::max(pic.height(), b.height()))
+				  : QSize(std::max(pic.width(), b.width()), pic.height() + gap + b.height());
+
+	// Where along its side the logo goes. The table keeps the top-left of
+	// what is left, so its rows do not move when the logo changes.
+	auto along = [&](int room, int extent) {
+		switch (l.align) {
+		case Logo::Align::Start:
+			return 0;
+		case Logo::Align::Center:
+			return (room - extent) / 2;
+		case Logo::Align::End:
+			break;
+		}
+		return room - extent;
+	};
+	QPoint picAt, bodyAt;
+	switch (l.side) {
+	case Logo::Side::Left:
+		picAt = QPoint(0, along(size.height(), pic.height()));
+		bodyAt = QPoint(pic.width() + gap, 0);
+		break;
+	case Logo::Side::Right:
+		picAt = QPoint(b.width() + gap, along(size.height(), pic.height()));
+		break;
+	case Logo::Side::Top:
+		picAt = QPoint(along(size.width(), pic.width()), 0);
+		bodyAt = QPoint(0, pic.height() + gap);
+		break;
+	case Logo::Side::Bottom:
+		picAt = QPoint(along(size.width(), pic.width()), b.height() + gap);
+		break;
+	}
+
+	QImage image(size, QImage::Format_RGBA8888_Premultiplied);
+	image.fill(Qt::transparent);
+	QPainter p(&image);
+	p.setRenderHint(QPainter::SmoothPixmapTransform);
+	if (!body.isNull())
+		p.drawImage(bodyAt, body);
+	p.setOpacity(std::clamp(l.opacity, 0.0, 1.0));
+	p.drawImage(picAt, pic);
 	p.end();
 	return image;
 }

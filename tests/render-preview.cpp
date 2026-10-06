@@ -84,6 +84,18 @@ int main(int argc, char **argv)
 		style.minWidth = atoi(argv[6]);
 	for (const Column &c : layout.columns())
 		style.ranges.insert(c.id, c.ranges);
+	// BSS_LOGO=<file> [BSS_LOGO_SIDE=left|right|top|bottom] [BSS_LOGO_ALIGN=start|center|end]
+	style.logo.path = qEnvironmentVariable("BSS_LOGO");
+	style.logo.show = !style.logo.path.isEmpty();
+	const QString side = qEnvironmentVariable("BSS_LOGO_SIDE");
+	style.logo.side = side == "right"    ? Logo::Side::Right
+			  : side == "top"    ? Logo::Side::Top
+			  : side == "bottom" ? Logo::Side::Bottom
+					     : Logo::Side::Left;
+	const QString align = qEnvironmentVariable("BSS_LOGO_ALIGN");
+	style.logo.align = align == "start" ? Logo::Align::Start
+			   : align == "end" ? Logo::Align::End
+					    : Logo::Align::Center;
 	Renderer renderer(QStringLiteral(BSS_SOURCE_DIR "/data/icons"));
 	QImage image = renderer.render(table, style);
 

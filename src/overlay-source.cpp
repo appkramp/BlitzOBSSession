@@ -46,6 +46,15 @@ constexpr const char *kStyleFrom = "style_from";
 constexpr const char *kShowNickname = "show_nickname";
 constexpr const char *kColorNickname = "color_nickname";
 constexpr const char *kNicknameFont = "nickname_font";
+constexpr const char *kLogoShow = "logo_show";
+constexpr const char *kLogoPath = "logo_path";
+constexpr const char *kLogoSide = "logo_side";
+constexpr const char *kLogoAlign = "logo_align";
+constexpr const char *kLogoMode = "logo_mode";
+constexpr const char *kLogoWidth = "logo_width";
+constexpr const char *kLogoHeight = "logo_height";
+constexpr const char *kLogoGap = "logo_gap";
+constexpr const char *kLogoOpacity = "logo_opacity";
 
 constexpr const char *kRows = "rows";
 constexpr const char *kSortBy = "sort_by";
@@ -190,6 +199,93 @@ void addNicknameGroup(obs_properties_t *props)
 	obs_properties_add_group(props, "nickname", obs_module_text("Prop.Nickname"), OBS_GROUP_NORMAL, group);
 }
 
+// The logo's settings, the same on a main source and on a copy.
+void logoDefaults(obs_data_t *settings)
+{
+	const Logo l;
+	obs_data_set_default_bool(settings, kLogoShow, false);
+	obs_data_set_default_string(settings, kLogoPath, "");
+	obs_data_set_default_string(settings, kLogoSide, "left");
+	obs_data_set_default_string(settings, kLogoAlign, "center");
+	obs_data_set_default_string(settings, kLogoMode, "fit");
+	obs_data_set_default_int(settings, kLogoWidth, l.width);
+	obs_data_set_default_int(settings, kLogoHeight, l.height);
+	obs_data_set_default_int(settings, kLogoGap, l.gap);
+	obs_data_set_default_int(settings, kLogoOpacity, 100);
+}
+
+Logo readLogo(obs_data_t *settings)
+{
+	Logo l;
+	l.show = obs_data_get_bool(settings, kLogoShow);
+	l.path = QString::fromUtf8(obs_data_get_string(settings, kLogoPath));
+	const QString side = QString::fromUtf8(obs_data_get_string(settings, kLogoSide));
+	l.side = side == QLatin1String("right")    ? Logo::Side::Right
+		 : side == QLatin1String("top")    ? Logo::Side::Top
+		 : side == QLatin1String("bottom") ? Logo::Side::Bottom
+						   : Logo::Side::Left;
+	const QString align = QString::fromUtf8(obs_data_get_string(settings, kLogoAlign));
+	l.align = align == QLatin1String("start") ? Logo::Align::Start
+		  : align == QLatin1String("end") ? Logo::Align::End
+						  : Logo::Align::Center;
+	const QString mode = QString::fromUtf8(obs_data_get_string(settings, kLogoMode));
+	l.mode = mode == QLatin1String("stretch")    ? Logo::Mode::Stretch
+		 : mode == QLatin1String("original") ? Logo::Mode::Original
+						     : Logo::Mode::Fit;
+	l.width = static_cast<int>(obs_data_get_int(settings, kLogoWidth));
+	l.height = static_cast<int>(obs_data_get_int(settings, kLogoHeight));
+	l.gap = static_cast<int>(obs_data_get_int(settings, kLogoGap));
+	l.opacity = static_cast<double>(obs_data_get_int(settings, kLogoOpacity)) / 100.0;
+	return l;
+}
+
+bool logoModified(obs_properties_t *props, obs_property_t *, obs_data_t *settings)
+{
+	const bool show = obs_data_get_bool(settings, kLogoShow);
+	const bool sized = QString::fromUtf8(obs_data_get_string(settings, kLogoMode)) != QLatin1String("original");
+	for (const char *key : {kLogoPath, kLogoSide, kLogoAlign, kLogoMode, kLogoGap, kLogoOpacity})
+		obs_property_set_visible(obs_properties_get(props, key), show);
+	obs_property_set_visible(obs_properties_get(props, kLogoWidth), show && sized);
+	obs_property_set_visible(obs_properties_get(props, kLogoHeight), show && sized);
+	return true;
+}
+
+void addLogoGroup(obs_properties_t *props)
+{
+	obs_properties_t *g = obs_properties_create();
+	obs_property_t *show = obs_properties_add_bool(g, kLogoShow, obs_module_text("Logo.Show"));
+	obs_property_set_modified_callback(show, logoModified);
+	obs_properties_add_path(g, kLogoPath, obs_module_text("Logo.File"), OBS_PATH_FILE,
+				"Images (*.png *.jpg *.jpeg *.gif *.bmp *.webp *.svg);;All files (*.*)", nullptr);
+
+	obs_property_t *side = obs_properties_add_list(g, kLogoSide, obs_module_text("Logo.Side"), OBS_COMBO_TYPE_LIST,
+						       OBS_COMBO_FORMAT_STRING);
+	obs_property_list_add_string(side, obs_module_text("Logo.Side.Left"), "left");
+	obs_property_list_add_string(side, obs_module_text("Logo.Side.Right"), "right");
+	obs_property_list_add_string(side, obs_module_text("Logo.Side.Top"), "top");
+	obs_property_list_add_string(side, obs_module_text("Logo.Side.Bottom"), "bottom");
+	obs_property_t *align = obs_properties_add_list(g, kLogoAlign, obs_module_text("Logo.Align"),
+							OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+	obs_property_list_add_string(align, obs_module_text("Logo.Align.Start"), "start");
+	obs_property_list_add_string(align, obs_module_text("Logo.Align.Center"), "center");
+	obs_property_list_add_string(align, obs_module_text("Logo.Align.End"), "end");
+
+	obs_property_t *mode = obs_properties_add_list(g, kLogoMode, obs_module_text("Logo.Mode"), OBS_COMBO_TYPE_LIST,
+						       OBS_COMBO_FORMAT_STRING);
+	obs_property_list_add_string(mode, obs_module_text("Logo.Mode.Fit"), "fit");
+	obs_property_list_add_string(mode, obs_module_text("Logo.Mode.Stretch"), "stretch");
+	obs_property_list_add_string(mode, obs_module_text("Logo.Mode.Original"), "original");
+	obs_property_set_modified_callback(mode, logoModified);
+	obs_property_t *w = obs_properties_add_int(g, kLogoWidth, obs_module_text("Logo.Width"), 8, 4000, 1);
+	obs_property_int_set_suffix(w, " px");
+	obs_property_t *h = obs_properties_add_int(g, kLogoHeight, obs_module_text("Logo.Height"), 8, 4000, 1);
+	obs_property_int_set_suffix(h, " px");
+	obs_property_t *gap = obs_properties_add_int(g, kLogoGap, obs_module_text("Logo.Gap"), 0, 500, 1);
+	obs_property_int_set_suffix(gap, " px");
+	obs_properties_add_int_slider(g, kLogoOpacity, obs_module_text("Logo.Opacity"), 0, 100, 1);
+	obs_properties_add_group(props, "logo", obs_module_text("Logo.Group"), OBS_GROUP_NORMAL, g);
+}
+
 struct OverlaySource {
 	obs_source_t *source = nullptr;
 	bool isCopy = false;
@@ -203,6 +299,7 @@ struct OverlaySource {
 		QFont font;
 		QColor color;
 	} nickname;
+	Logo logo;          // each source's own, a copy's too
 	AccountRef account; // a copy's account; the key's own for a main source
 	QString styleFrom;  // a copy: the uuid of the main source it looks like; empty for the first
 	QImage pending;
@@ -210,6 +307,7 @@ struct OverlaySource {
 
 	gs_texture_t *texture = nullptr; // graphics thread only
 	std::atomic<uint32_t> cx{0}, cy{0};
+	std::atomic<uint32_t> tableCx{0}; // the table alone, without the logo
 };
 
 std::mutex g_registryMu;
@@ -257,6 +355,7 @@ void renderSource(OverlaySource &s)
 	bool showNickname = true;
 	QFont nicknameFont;
 	QColor nicknameColor;
+	Logo logo;
 	AccountRef account;
 	QString styleFrom;
 	{
@@ -266,6 +365,7 @@ void renderSource(OverlaySource &s)
 		showNickname = s.nickname.show;
 		nicknameFont = s.nickname.font;
 		nicknameColor = s.nickname.color;
+		logo = s.logo;
 		account = s.account;
 		styleFrom = s.styleFrom;
 	}
@@ -280,6 +380,7 @@ void renderSource(OverlaySource &s)
 	}
 	style.captionFont = nicknameFont;
 	style.caption = nicknameColor;
+	style.logo = logo;
 	options.language = overlayLanguage();
 
 	static const Session empty;
@@ -298,11 +399,13 @@ void renderSource(OverlaySource &s)
 			nickname = QStringLiteral("#%1").arg(account.id);
 		table.caption = nicknameCaption(nickname, clanTag);
 	}
-	QImage image = p->renderer->render(table, style);
+	int tableWidth = 0;
+	QImage image = p->renderer->render(table, style, &tableWidth);
 
 	std::lock_guard<std::mutex> lock(s.mu);
 	s.cx = static_cast<uint32_t>(image.width());
 	s.cy = static_cast<uint32_t>(image.height());
+	s.tableCx = static_cast<uint32_t>(tableWidth);
 	s.pending = std::move(image);
 	s.hasPending = true;
 }
@@ -378,6 +481,7 @@ void readSettings(OverlaySource &s, obs_data_t *settings)
 	s.nickname.show = obs_data_get_bool(settings, kShowNickname);
 	s.nickname.font = readFont(settings, kNicknameFont);
 	s.nickname.color = toColor(obs_data_get_int(settings, kColorNickname));
+	s.logo = readLogo(settings);
 }
 
 // The accounts the copies show go to the client, which subscribes to them.
@@ -421,6 +525,7 @@ void readCopySettings(OverlaySource &s, obs_data_t *settings)
 	s.nickname.show = obs_data_get_bool(settings, kShowNickname);
 	s.nickname.font = readFont(settings, kNicknameFont);
 	s.nickname.color = toColor(obs_data_get_int(settings, kColorNickname));
+	s.logo = readLogo(settings);
 }
 
 std::shared_ptr<OverlaySource> *holder(void *data)
@@ -490,6 +595,7 @@ void getDefaults(obs_data_t *settings)
 	obs_data_set_default_string(settings, kHeaderPlace, "top");
 	obs_data_set_default_bool(settings, kShowTotal, true);
 	nicknameDefaults(settings);
+	logoDefaults(settings);
 	if (Plugin *p = plugin()) {
 		for (const Column &c : p->layout.columns())
 			obs_data_set_default_bool(settings, columnKey(c.id).constData(), c.visibleByDefault);
@@ -707,6 +813,7 @@ obs_properties_t *getProperties(void *data)
 	obs_properties_add_group(props, "columns", obs_module_text("Prop.Columns"), OBS_GROUP_NORMAL, columns);
 
 	addNicknameGroup(props);
+	addLogoGroup(props);
 
 	obs_properties_t *look = obs_properties_create();
 	obs_properties_add_font(look, kFont, obs_module_text("Prop.Font"));
@@ -847,6 +954,7 @@ void getCopyDefaults(obs_data_t *settings)
 	obs_data_set_default_string(settings, kAccountRealm, "eu");
 	obs_data_set_default_string(settings, kStyleFrom, "");
 	nicknameDefaults(settings);
+	logoDefaults(settings);
 }
 
 // What the server says about the copy's account, for its properties.
@@ -917,6 +1025,7 @@ obs_properties_t *getCopyProperties(void *data)
 		}
 		obs_properties_add_text(props, "copy_status", copyStatus(ref).toUtf8().constData(), OBS_TEXT_INFO);
 		addNicknameGroup(props);
+		addLogoGroup(props);
 		obs_properties_add_button2(
 			props, "copy_refresh", obs_module_text("Prop.RefreshTanks"),
 			[](obs_properties_t *, obs_property_t *, void *) { return true; }, nullptr);
@@ -1051,7 +1160,10 @@ void normalizeSceneScales()
 		}
 		if (cx > 0 && owner) {
 			obs_data_t *settings = obs_source_get_settings(owner->source);
-			obs_data_set_int(settings, kWidth, std::lround(cx * scale.x));
+			// The logo keeps its size; the table takes all of the change.
+			const uint32_t tableCx = std::min(cx, f.source->tableCx.load());
+			obs_data_set_int(settings, kWidth,
+					 std::max(0L, std::lround(cx * scale.x) - static_cast<long>(cx - tableCx)));
 			obs_source_update(owner->source, settings);
 			obs_data_release(settings);
 		}
