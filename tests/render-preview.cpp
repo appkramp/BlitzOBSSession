@@ -67,9 +67,10 @@ int main(int argc, char **argv)
 	for (const Column &c : layout.columns())
 		if (c.visibleByDefault)
 			o.columns << c.id;
-	const Table table = buildTable(layout, session, catalog, o,
+	Table table = buildTable(layout, session, catalog, o,
 				       [&](const QString &k) { return ru.value(k, k.section('.', -1)); });
 
+	table.caption = qEnvironmentVariable("BSS_CAPTION");
 	Style style;
 	style.font = QFont(QStringLiteral("Helvetica Neue"));
 	style.font.setPixelSize(argc > 4 ? atoi(argv[4]) : 28);

@@ -67,6 +67,19 @@ function Package {
     }
     Compress-Archive -Force @CompressArgs
     Log-Group
+
+    # The installer streamers run: installer/windows.iss, built with Inno
+    # Setup 6 (on the GitHub runners already; installed when missing).
+    Log-Group "Building the installer..."
+    $Iscc = "${env:ProgramFiles(x86)}/Inno Setup 6/ISCC.exe"
+    if ( ! ( Test-Path $Iscc ) ) {
+        choco install innosetup --no-progress -y
+    }
+    & $Iscc /Q "/DVersion=${ProductVersion}" "/DConfig=${Configuration}" "${ProjectRoot}/installer/windows.iss"
+    if ( $LASTEXITCODE -ne 0 ) {
+        throw "Inno Setup failed with exit code ${LASTEXITCODE}"
+    }
+    Log-Group
 }
 
 Package

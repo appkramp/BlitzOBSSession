@@ -13,10 +13,14 @@
 
 namespace bss::protocol {
 
-constexpr int kVersion = 1;
+// Protocol 2: one key streams several accounts, one subscription per
+// (account, realm). The server still speaks 1 to older plugins.
+constexpr int kVersion = 2;
 
-QByteArray hello(const QString &key, const QString &client);
-QByteArray subscribe(const QString &realm, const QDateTime &since, qint64 afterId);
+QByteArray hello(const QString &key, const QString &client, int version = kVersion);
+// `accountId` 0 is the key's own account.
+QByteArray subscribe(qint64 accountId, const QString &realm, const QDateTime &since, qint64 afterId);
+QByteArray unsubscribe(qint64 accountId, const QString &realm);
 QByteArray ping();
 
 struct Account {
@@ -27,11 +31,18 @@ struct Account {
 };
 
 struct Message {
-	enum class Type { Unknown, Welcome, History, Battles, Account, Error, Pong };
+	enum class Type { Unknown, Welcome, Subscribed, Unsubscribed, History, Battles, Account, Error, Pong };
 
 	Type type = Type::Unknown;
 	Account account;             // welcome, account
-	QString realm;               // history, battles
+	int maxExtraAccounts = 0;    // welcome
+	QStringList serverRealms;    // welcome: the realms the server collects
+	qint64 accountId = 0;        // subscribed, unsubscribed, history, battles, error about a subscription
+	QString realm;               // the same, and history, battles
+	QString nickname;            // subscribed
+	QString clanTag;             // subscribed
+	bool collecting = false;     // subscribed
+	bool hasReading = true;      // subscribed: false for an account the server only began to collect
 	QList<BattleRecord> battles; // history, battles
 	bool hasMore = false;        // history
 	QString errorCode;           // error

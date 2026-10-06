@@ -44,6 +44,8 @@ struct Table {
 	// Per column: it takes the width left over in a table of fixed size (the
 	// name).
 	QList<bool> stretch;
+	// A line above the table — the account's nickname; empty for none.
+	QString caption;
 };
 
 struct TableOptions {

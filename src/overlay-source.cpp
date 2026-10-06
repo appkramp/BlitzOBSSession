@@ -38,6 +38,13 @@ namespace bss {
 namespace {
 
 constexpr const char *kSourceId = "blitz_session_stats";
+// A copy: another account, drawn the way a main source is set up.
+constexpr const char *kCopySourceId = "blitz_session_stats_account";
+constexpr const char *kAccountId = "account_id";
+constexpr const char *kAccountRealm = "account_realm";
+constexpr const char *kStyleFrom = "style_from";
+constexpr const char *kShowNickname = "show_nickname";
+constexpr const char *kColorNickname = "color_nickname";
 
 constexpr const char *kRows = "rows";
 constexpr const char *kSortBy = "sort_by";
@@ -139,10 +146,14 @@ const char *defaultFontFace()
 
 struct OverlaySource {
 	obs_source_t *source = nullptr;
+	bool isCopy = false;
 
 	std::mutex mu;
 	TableOptions options;
 	Style style;
+	bool showNickname = true;
+	AccountRef account; // a copy's account; the key's own for a main source
+	QString styleFrom;  // a copy: the uuid of the main source it looks like; empty for the first
 	QImage pending;
 	bool hasPending = false;
 
@@ -153,6 +164,37 @@ struct OverlaySource {
 std::mutex g_registryMu;
 std::vector<std::weak_ptr<OverlaySource>> g_registry;
 
+std::vector<std::shared_ptr<OverlaySource>> allSources()
+{
+	std::vector<std::shared_ptr<OverlaySource>> sources;
+	std::lock_guard<std::mutex> lock(g_registryMu);
+	for (const auto &w : g_registry)
+		if (auto s = w.lock())
+			sources.push_back(std::move(s));
+	return sources;
+}
+
+// The main source a copy takes its look from: the one it names, or the
+// first there is.
+std::shared_ptr<OverlaySource> mainFor(const QString &uuid)
+{
+	std::shared_ptr<OverlaySource> first;
+	for (const auto &s : allSources()) {
+		if (s->isCopy)
+			continue;
+		if (!uuid.isEmpty() && QString::fromUtf8(obs_source_get_uuid(s->source)) == uuid)
+			return s;
+		if (!first)
+			first = s;
+	}
+	return first;
+}
+
+QString nicknameCaption(const QString &nickname, const QString &clanTag)
+{
+	return clanTag.isEmpty() ? nickname : QStringLiteral("%1 [%2]").arg(nickname, clanTag);
+}
+
 void renderSource(OverlaySource &s)
 {
 	Plugin *p = plugin();
@@ -161,15 +203,45 @@ void renderSource(OverlaySource &s)
 
 	TableOptions options;
 	Style style;
+	bool showNickname = true;
+	AccountRef account;
+	QString styleFrom;
 	{
 		std::lock_guard<std::mutex> lock(s.mu);
 		options = s.options;
 		style = s.style;
+		showNickname = s.showNickname;
+		account = s.account;
+		styleFrom = s.styleFrom;
+	}
+	if (s.isCopy) {
+		// Everything about the look is the main source's.
+		const auto main = mainFor(styleFrom);
+		if (!main)
+			return;
+		std::lock_guard<std::mutex> lock(main->mu);
+		options = main->options;
+		style = main->style;
+		showNickname = main->showNickname;
 	}
 	options.language = overlayLanguage();
 
-	const Table table = buildTable(p->layout, p->client->session(), p->catalog->catalog(), options,
-				       [](const QString &key) { return overlayText(key); });
+	static const Session empty;
+	const Feed *feed = p->client->feed(account);
+	const Session &session = feed ? feed->session : empty;
+	Table table = buildTable(p->layout, session, p->catalog->catalog(), options,
+				 [](const QString &key) { return overlayText(key); });
+	if (showNickname) {
+		QString nickname = feed ? feed->nickname : QString();
+		QString clanTag = feed ? feed->clanTag : QString();
+		if (account.isOwn() && nickname.isEmpty()) {
+			nickname = p->client->account().nickname;
+			clanTag = p->client->account().clanTag;
+		}
+		if (nickname.isEmpty() && !account.isOwn())
+			nickname = QStringLiteral("#%1").arg(account.id);
+		table.caption = nicknameCaption(nickname, clanTag);
+	}
 	QImage image = p->renderer->render(table, style);
 
 	std::lock_guard<std::mutex> lock(s.mu);
@@ -236,6 +308,7 @@ void readSettings(OverlaySource &s, obs_data_t *settings)
 		}
 	}
 	st.header = toColor(obs_data_get_int(settings, kColorHeader));
+	st.caption = toColor(obs_data_get_int(settings, kColorNickname));
 	st.labelsInside = QString::fromUtf8(obs_data_get_string(settings, kHeaderPlace)) == QLatin1String("inside");
 	st.minWidth = static_cast<int>(obs_data_get_int(settings, kWidth));
 	st.total = toColor(obs_data_get_int(settings, kColorTotal));
@@ -256,6 +329,47 @@ void readSettings(OverlaySource &s, obs_data_t *settings)
 	std::lock_guard<std::mutex> lock(s.mu);
 	s.options = o;
 	s.style = st;
+	s.showNickname = obs_data_get_bool(settings, kShowNickname);
+}
+
+// The accounts the copies show go to the client, which subscribes to them.
+void syncExtraAccounts()
+{
+	if (!QCoreApplication::instance())
+		return;
+	QMetaObject::invokeMethod(
+		QCoreApplication::instance(),
+		[] {
+			Plugin *p = plugin();
+			if (!p)
+				return;
+			QList<AccountRef> accounts;
+			for (const auto &s : allSources()) {
+				if (!s->isCopy)
+					continue;
+				std::lock_guard<std::mutex> lock(s->mu);
+				accounts.append(s->account);
+			}
+			p->client->setExtraAccounts(accounts);
+		},
+		Qt::QueuedConnection);
+}
+
+void requestRenderAll()
+{
+	if (QCoreApplication::instance())
+		QMetaObject::invokeMethod(
+			QCoreApplication::instance(), [] { renderAllSources(); }, Qt::QueuedConnection);
+}
+
+void readCopySettings(OverlaySource &s, obs_data_t *settings)
+{
+	bool ok = false;
+	const qint64 id = QString::fromUtf8(obs_data_get_string(settings, kAccountId)).trimmed().toLongLong(&ok);
+	std::lock_guard<std::mutex> lock(s.mu);
+	s.account.id = ok && id > 0 ? id : 0;
+	s.account.realm = QString::fromUtf8(obs_data_get_string(settings, kAccountRealm));
+	s.styleFrom = QString::fromUtf8(obs_data_get_string(settings, kStyleFrom));
 }
 
 std::shared_ptr<OverlaySource> *holder(void *data)
@@ -300,13 +414,17 @@ void destroy(void *data)
 		obs_leave_graphics();
 		s->texture = nullptr;
 	}
+	if (s->isCopy)
+		syncExtraAccounts();
+	else
+		requestRenderAll(); // copies that looked like it find another
 }
 
 void update(void *data, obs_data_t *settings)
 {
 	auto &s = *holder(data);
 	readSettings(*s, settings);
-	requestRender(s);
+	requestRenderAll(); // the copies look like it
 }
 
 void getDefaults(obs_data_t *settings)
@@ -320,6 +438,7 @@ void getDefaults(obs_data_t *settings)
 	obs_data_set_default_bool(settings, kShowHeader, true);
 	obs_data_set_default_string(settings, kHeaderPlace, "top");
 	obs_data_set_default_bool(settings, kShowTotal, true);
+	obs_data_set_default_bool(settings, kShowNickname, true);
 	if (Plugin *p = plugin()) {
 		for (const Column &c : p->layout.columns())
 			obs_data_set_default_bool(settings, columnKey(c.id).constData(), c.visibleByDefault);
@@ -340,6 +459,7 @@ void getDefaults(obs_data_t *settings)
 						 fromColor(defaultColumnColor(c)));
 	}
 	obs_data_set_default_int(settings, kColorHeader, fromColor(st.header));
+	obs_data_set_default_int(settings, kColorNickname, fromColor(st.caption));
 	obs_data_set_default_int(settings, kColorTotal, fromColor(st.total));
 	QColor block = st.block;
 	block.setAlpha(255);
@@ -367,6 +487,23 @@ bool layoutModified(obs_properties_t *props, obs_property_t *, obs_data_t *setti
 	obs_property_set_visible(obs_properties_get(props, kShowTotal), !totals);
 	obs_property_set_visible(obs_properties_get(props, kHeaderPlace), obs_data_get_bool(settings, kShowHeader));
 	return true;
+}
+
+void addVersion(obs_properties_t *props)
+{
+	const QString text = uiText("Prop.Version").arg(QString::fromUtf8(PLUGIN_VERSION));
+	obs_properties_add_text(props, "version", text.toUtf8().constData(), OBS_TEXT_INFO);
+}
+
+void addConnectionButton(obs_properties_t *props)
+{
+	obs_properties_add_button2(
+		props, "connection", obs_module_text("Prop.Connection"),
+		[](obs_properties_t *, obs_property_t *, void *) {
+			openSettings();
+			return false;
+		},
+		nullptr);
 }
 
 // The "Columns…" button: which columns, in what order.
@@ -444,13 +581,8 @@ obs_properties_t *getProperties(void *data)
 	obs_properties_t *props = obs_properties_create();
 	Plugin *p = plugin();
 
-	obs_properties_add_button2(
-		props, "connection", obs_module_text("Prop.Connection"),
-		[](obs_properties_t *, obs_property_t *, void *) {
-			openSettings();
-			return false;
-		},
-		nullptr);
+	addVersion(props);
+	addConnectionButton(props);
 
 	obs_property_t *rows = obs_properties_add_list(props, kRows, obs_module_text("Prop.Rows"), OBS_COMBO_TYPE_LIST,
 						       OBS_COMBO_FORMAT_STRING);
@@ -496,6 +628,7 @@ obs_properties_t *getProperties(void *data)
 	obs_property_int_set_suffix(width, " px");
 	obs_property_set_long_description(width, obs_module_text("Prop.WidthHint"));
 	obs_properties_add_int(props, kMaxRows, obs_module_text("Prop.MaxRows"), 0, 100, 1);
+	obs_properties_add_bool(props, kShowNickname, obs_module_text("Prop.ShowNickname"));
 	obs_property_t *showHeader = obs_properties_add_bool(props, kShowHeader, obs_module_text("Prop.ShowHeader"));
 	obs_property_set_modified_callback(showHeader, layoutModified);
 	obs_property_t *place = obs_properties_add_list(props, kHeaderPlace, obs_module_text("Prop.HeaderPlace"),
@@ -526,6 +659,7 @@ obs_properties_t *getProperties(void *data)
 
 	obs_properties_t *look = obs_properties_create();
 	obs_properties_add_font(look, kFont, obs_module_text("Prop.Font"));
+	obs_properties_add_color_alpha(look, kColorNickname, obs_module_text("Prop.ColorNickname"));
 	obs_properties_add_color_alpha(look, kColorHeader, obs_module_text("Prop.ColorHeader"));
 	obs_properties_add_color_alpha(look, kColorTotal, obs_module_text("Prop.ColorTotal"));
 	obs_properties_add_int(look, kColumnSpacing, obs_module_text("Prop.ColumnSpacing"), 0, 200, 1);
@@ -627,6 +761,120 @@ void videoRender(void *data, gs_effect_t *effect)
 
 } // namespace
 
+namespace {
+
+const char *getCopyName(void *)
+{
+	return obs_module_text("BlitzSessionStatsAccount");
+}
+
+void *createCopy(obs_data_t *settings, obs_source_t *source)
+{
+	auto s = std::make_shared<OverlaySource>();
+	s->source = source;
+	s->isCopy = true;
+	readCopySettings(*s, settings);
+	{
+		std::lock_guard<std::mutex> lock(g_registryMu);
+		g_registry.push_back(s);
+	}
+	syncExtraAccounts();
+	requestRender(s);
+	return new std::shared_ptr<OverlaySource>(std::move(s));
+}
+
+void updateCopy(void *data, obs_data_t *settings)
+{
+	auto &s = *holder(data);
+	readCopySettings(*s, settings);
+	syncExtraAccounts();
+	requestRender(s);
+}
+
+void getCopyDefaults(obs_data_t *settings)
+{
+	obs_data_set_default_string(settings, kAccountId, "");
+	obs_data_set_default_string(settings, kAccountRealm, "eu");
+	obs_data_set_default_string(settings, kStyleFrom, "");
+}
+
+// What the server says about the copy's account, for its properties.
+QString copyStatus(const AccountRef &ref)
+{
+	Plugin *p = plugin();
+	if (!p)
+		return QString();
+	if (ref.id <= 0)
+		return uiText("Copy.NoAccount");
+	const Feed *f = p->client->feed(ref);
+	if (!f)
+		return uiText("Copy.Waiting");
+	switch (f->status) {
+	case Feed::Status::Waiting:
+		return uiText("Copy.Waiting");
+	case Feed::Status::Loading:
+	case Feed::Status::Live: {
+		QString text = uiText("Copy.Live").arg(nicknameCaption(f->nickname, f->clanTag));
+		if (!f->hasReading)
+			text += QLatin1Char('\n') + uiText("Copy.NoReading");
+		return text;
+	}
+	case Feed::Status::Unknown:
+		return uiText("Copy.Unknown");
+	case Feed::Status::TooMany:
+		return uiText("Copy.TooMany").arg(p->client->maxExtraAccounts());
+	case Feed::Status::RealmUnavailable:
+		return uiText("Copy.RealmUnavailable");
+	case Feed::Status::Failed:
+		return uiText("Copy.Failed").arg(f->error);
+	case Feed::Status::Unsupported:
+		return uiText("Copy.Unsupported");
+	}
+	return QString();
+}
+
+obs_properties_t *getCopyProperties(void *data)
+{
+	OverlaySource *s = data ? holder(data)->get() : nullptr;
+	obs_properties_t *props = obs_properties_create();
+	addVersion(props);
+	obs_properties_add_text(props, "copy_hint", obs_module_text("Copy.Hint"), OBS_TEXT_INFO);
+
+	obs_property_t *id =
+		obs_properties_add_text(props, kAccountId, obs_module_text("Copy.AccountId"), OBS_TEXT_DEFAULT);
+	obs_property_set_long_description(id, obs_module_text("Copy.AccountIdHint"));
+	obs_property_t *realm = obs_properties_add_list(props, kAccountRealm, obs_module_text("Settings.Realm"),
+							OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+	for (const char *r : {"eu", "com", "asia"})
+		obs_property_list_add_string(realm, obs_module_text(QByteArray("Realm.").append(r).constData()), r);
+
+	obs_property_t *from = obs_properties_add_list(props, kStyleFrom, obs_module_text("Copy.StyleFrom"),
+						       OBS_COMBO_TYPE_LIST, OBS_COMBO_FORMAT_STRING);
+	obs_property_list_add_string(from, obs_module_text("Copy.StyleFirst"), "");
+	for (const auto &main : allSources()) {
+		if (main->isCopy)
+			continue;
+		obs_property_list_add_string(from, obs_source_get_name(main->source),
+					     obs_source_get_uuid(main->source));
+	}
+
+	if (s) {
+		AccountRef ref;
+		{
+			std::lock_guard<std::mutex> lock(s->mu);
+			ref = s->account;
+		}
+		obs_properties_add_text(props, "copy_status", copyStatus(ref).toUtf8().constData(), OBS_TEXT_INFO);
+		obs_properties_add_button2(
+			props, "copy_refresh", obs_module_text("Prop.RefreshTanks"),
+			[](obs_properties_t *, obs_property_t *, void *) { return true; }, nullptr);
+	}
+	addConnectionButton(props);
+	return props;
+}
+
+} // namespace
+
 void registerOverlaySource()
 {
 	obs_source_info info = {};
@@ -644,6 +892,15 @@ void registerOverlaySource()
 	info.get_height = getHeight;
 	info.video_render = videoRender;
 	obs_register_source(&info);
+
+	obs_source_info copy = info;
+	copy.id = kCopySourceId;
+	copy.get_name = getCopyName;
+	copy.create = createCopy;
+	copy.update = updateCopy;
+	copy.get_defaults = getCopyDefaults;
+	copy.get_properties = getCopyProperties;
+	obs_register_source(&copy);
 }
 
 namespace {
@@ -733,11 +990,17 @@ void normalizeSceneScales()
 		// Resizing the source in the scene means a wider table, not a larger
 		// font: the new width becomes the setting and the scale goes back to
 		// 1. The height follows the rows, so a vertical stretch is undone.
+		// A copy's width is its main source's, like the rest of its look.
 		const uint32_t cx = f.source->cx.load();
-		if (cx > 0) {
-			obs_data_t *settings = obs_source_get_settings(f.source->source);
+		std::shared_ptr<OverlaySource> owner = f.source;
+		if (f.source->isCopy) {
+			std::lock_guard<std::mutex> lock(f.source->mu);
+			owner = mainFor(f.source->styleFrom);
+		}
+		if (cx > 0 && owner) {
+			obs_data_t *settings = obs_source_get_settings(owner->source);
 			obs_data_set_int(settings, kWidth, std::lround(cx * scale.x));
-			obs_source_update(f.source->source, settings);
+			obs_source_update(owner->source, settings);
 			obs_data_release(settings);
 		}
 		vec2 one;
@@ -753,14 +1016,7 @@ void normalizeSceneScales()
 
 void renderAllSources()
 {
-	std::vector<std::shared_ptr<OverlaySource>> sources;
-	{
-		std::lock_guard<std::mutex> lock(g_registryMu);
-		for (const auto &w : g_registry)
-			if (auto s = w.lock())
-				sources.push_back(std::move(s));
-	}
-	for (const auto &s : sources)
+	for (const auto &s : allSources())
 		renderSource(*s);
 }
 

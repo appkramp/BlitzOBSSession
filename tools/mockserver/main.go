@@ -27,6 +27,15 @@
 // It behaves as the real server does where that differs from the protocol
 // document (StatsCollector docs/overlay.md): history in pages of 200 ordered
 // by id, at most -max-conns connections per key.
+//
+// Protocol 2 — other accounts on one key — as the real server serves it: any
+// account id is accepted (one ending in 999 is "unknown to Wargaming"), a new
+// one starts with no battles (has_reading false), at most -max-extra other
+// accounts per connection. A battle for one of them:
+//
+//	curl -X POST 'http://127.0.0.1:8765/battle?account=512345678&realm=eu'
+//
+// -protocol1 makes it an old server that refuses protocol 2.
 package main
 
 import (
@@ -47,6 +56,11 @@ import (
 // Real tank ids from the vehicle catalogue: every class, tiers 6, 8 and 10.
 var tanks = []int{1553, 4961, 3937, 801, 817, 4481, 2609, 3889, 3649, 593, 49, 3681}
 
+// The key's own account.
+const ownID int64 = 1234567
+
+var allRealms = []string{"eu", "com", "asia"}
+
 type record struct {
 	ID          int64          `json:"id"`
 	TankID      int            `json:"tank_id"`
@@ -54,31 +68,60 @@ type record struct {
 	Count       int            `json:"count"`
 	Approximate bool           `json:"approximate"`
 	Values      map[string]any `json:"values"`
+	account     int64
 	realm       string
 	initial     bool
 }
 
-type server struct {
-	key      string
-	account  map[string]any
-	realms   []string
-	pageSize int
-	maxConns int
+type account struct {
+	nickname   string
+	clanTag    string
+	hasReading bool
+}
 
-	mu      sync.Mutex
-	nextID  int64
-	records []record
-	revoked bool
-	clients map[*client]struct{}
+type server struct {
+	key       string
+	realms    []string // the own account's
+	pageSize  int
+	maxConns  int
+	maxExtra  int
+	protocol1 bool
+
+	mu       sync.Mutex
+	nextID   int64
+	records  []record
+	accounts map[int64]*account
+	revoked  bool
+	clients  map[*client]struct{}
+}
+
+type subKey struct {
+	account int64
+	realm   string
+}
+
+type subscription struct {
+	since  time.Time
+	lastID int64
 }
 
 type client struct {
-	ws     *wsConn
-	mu     sync.Mutex
-	realm  string
-	since  time.Time
-	lastID int64
-	live   bool
+	ws      *wsConn
+	mu      sync.Mutex
+	version int
+	subs    map[subKey]*subscription
+}
+
+func newServer(key string, realms []string) *server {
+	return &server{
+		key:      key,
+		realms:   realms,
+		pageSize: 200,
+		maxConns: 3,
+		maxExtra: 10,
+		accounts: map[int64]*account{ownID: {nickname: "MockStreamer", clanTag: "MOCK", hasReading: true}},
+		clients:  map[*client]struct{}{},
+	}
 }
 
 func main() {
@@ -88,31 +131,34 @@ func main() {
 	hours := flag.Int("history", 30, "hours of invented history")
 	page := flag.Int("page", 200, "records per history page")
 	maxConns := flag.Int("max-conns", 3, "connections per key")
-	realms := flag.String("realms", "eu,com", "realms the key opens")
+	maxExtra := flag.Int("max-extra", 10, "other accounts per connection")
+	protocol1 := flag.Bool("protocol1", false, "act as a server that speaks protocol 1 only")
+	realms := flag.String("realms", "eu,com", "realms the key's own account is on")
 	flag.Parse()
 
-	s := &server{
-		key:      *key,
-		realms:   strings.Split(*realms, ","),
-		pageSize: *page,
-		maxConns: *maxConns,
-		nextID:   1000,
-		clients:  map[*client]struct{}{},
-	}
-	s.account = map[string]any{"account_id": 1234567, "nickname": "MockStreamer", "clan_tag": "MOCK", "realms": s.realms}
+	s := newServer(*key, strings.Split(*realms, ","))
+	s.pageSize, s.maxConns, s.maxExtra, s.protocol1 = *page, *maxConns, *maxExtra, *protocol1
 
 	now := time.Now().UTC()
 	for _, realm := range s.realms {
 		for t := now.Add(-time.Duration(*hours) * time.Hour); t.Before(now); t = t.Add(time.Duration(4+rand.IntN(10)) * time.Minute) {
-			s.add(realm, tanks[rand.IntN(len(tanks))], t, 0)
+			s.add(ownID, realm, tanks[rand.IntN(len(tanks))], t, 0)
 		}
 	}
 
 	if *every > 0 {
 		go func() {
 			for range time.Tick(*every) {
-				r := s.add(s.realms[0], tanks[rand.IntN(len(tanks))], time.Now().UTC(), 0)
-				log.Printf("battle %d: tank %d", r.ID, r.TankID)
+				// Any account somebody watches, the own one included.
+				s.mu.Lock()
+				ids := []int64{}
+				for id := range s.accounts {
+					ids = append(ids, id)
+				}
+				s.mu.Unlock()
+				id := ids[rand.IntN(len(ids))]
+				r := s.add(id, s.realms[0], tanks[rand.IntN(len(tanks))], time.Now().UTC(), 0)
+				log.Printf("battle %d: account %d tank %d", r.ID, id, r.TankID)
 			}
 		}()
 	}
@@ -123,12 +169,16 @@ func main() {
 		if realm == "" {
 			realm = s.realms[0]
 		}
+		id, _ := strconv.ParseInt(r.URL.Query().Get("account"), 10, 64)
+		if id == 0 {
+			id = ownID
+		}
 		tank, _ := strconv.Atoi(r.URL.Query().Get("tank_id"))
 		if tank == 0 {
 			tank = tanks[rand.IntN(len(tanks))]
 		}
 		damage, _ := strconv.Atoi(r.URL.Query().Get("damage"))
-		rec := s.add(realm, tank, time.Now().UTC(), damage)
+		rec := s.add(id, realm, tank, time.Now().UTC(), damage)
 		fmt.Fprintf(w, "added %d\n", rec.ID)
 	})
 	http.HandleFunc("POST /initial", func(w http.ResponseWriter, r *http.Request) {
@@ -166,9 +216,9 @@ func main() {
 	log.Fatal(http.ListenAndServe(*addr, nil))
 }
 
-// add invents a battle — with the given damage, when not 0 — and pushes it to
-// the live subscribers of its realm.
-func (s *server) add(realm string, tank int, at time.Time, damage int) record {
+// add invents a battle of an account — with the given damage, when not 0 —
+// and pushes it to the live subscribers of that account and realm.
+func (s *server) add(id int64, realm string, tank int, at time.Time, damage int) record {
 	win := rand.IntN(100) < 52
 	survived := rand.IntN(100) < 40
 	shots := 4 + rand.IntN(10)
@@ -183,15 +233,18 @@ func (s *server) add(realm string, tank int, at time.Time, damage int) record {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if a := s.accounts[id]; a != nil {
+		a.hasReading = true
+	}
 	s.nextID++
 	rec := record{ID: s.nextID, TankID: tank, Date: at.Truncate(time.Second), Count: 1,
-		Values: map[string]any{"all": all}, realm: realm}
+		Values: map[string]any{"all": all}, account: id, realm: realm}
 	s.records = append(s.records, rec)
 	for c := range s.clients {
 		c.mu.Lock()
-		if c.live && c.realm == realm && !rec.Date.Before(c.since) && rec.ID > c.lastID {
-			c.lastID = rec.ID
-			c.send(map[string]any{"type": "battles", "realm": realm, "battles": []record{rec}})
+		if sub := c.subs[subKey{id, realm}]; sub != nil && !rec.Date.Before(sub.since) && rec.ID > sub.lastID {
+			sub.lastID = rec.ID
+			c.send(c.withAccount(map[string]any{"type": "battles", "realm": realm, "battles": []record{rec}}, id))
 		}
 		c.mu.Unlock()
 	}
@@ -212,12 +265,20 @@ func (c *client) send(v any) {
 	}
 }
 
+// withAccount names the account in protocol 2; protocol 1 names none.
+func (c *client) withAccount(m map[string]any, id int64) map[string]any {
+	if c.version >= 2 {
+		m["account_id"] = id
+	}
+	return m
+}
+
 func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
 	ws, err := upgrade(w, r)
 	if err != nil {
 		return
 	}
-	c := &client{ws: ws}
+	c := &client{ws: ws, subs: map[subKey]*subscription{}}
 	defer ws.conn.Close()
 
 	fail := func(code, msg string, fatal bool) {
@@ -242,10 +303,11 @@ func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
 		fail("bad_request", "the first message must be hello", true)
 		return
 	}
-	if hello.Protocol != 1 {
-		fail("protocol", "protocol 1 only", true)
+	if hello.Protocol != 1 && (hello.Protocol != 2 || s.protocol1) {
+		fail("protocol", "unsupported protocol", true)
 		return
 	}
+	c.version = hello.Protocol
 	s.mu.Lock()
 	ok := hello.Key == s.key && !s.revoked
 	s.mu.Unlock()
@@ -262,8 +324,14 @@ func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
 		ws.Close(4000, "rate_limited")
 		return
 	}
-	log.Printf("%s connected: %s", r.RemoteAddr, hello.Client)
-	c.send(map[string]any{"type": "welcome", "protocol": 1, "server_time": time.Now().UTC(), "account": s.account})
+	log.Printf("%s connected: %s, protocol %d", r.RemoteAddr, hello.Client, c.version)
+	welcome := map[string]any{"type": "welcome", "protocol": c.version, "server_time": time.Now().UTC(),
+		"account": map[string]any{"account_id": ownID, "nickname": "MockStreamer", "clan_tag": "MOCK", "realms": s.realms}}
+	if c.version >= 2 {
+		welcome["max_extra_accounts"] = s.maxExtra
+		welcome["realms"] = allRealms
+	}
+	c.send(welcome)
 
 	s.mu.Lock()
 	s.clients[c] = struct{}{}
@@ -290,43 +358,94 @@ func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		var msg struct {
-			Type    string          `json:"type"`
-			Realm   string          `json:"realm"`
-			Since   json.RawMessage `json:"since"`
-			AfterID int64           `json:"after_id"`
+			Type      string          `json:"type"`
+			Realm     string          `json:"realm"`
+			AccountID int64           `json:"account_id"`
+			Since     json.RawMessage `json:"since"`
+			AfterID   int64           `json:"after_id"`
 		}
-		if json.Unmarshal(raw, &msg) == nil && msg.Type == "ping" {
+		if json.Unmarshal(raw, &msg) != nil {
+			fail("bad_request", "not JSON", false)
+			continue
+		}
+		id := msg.AccountID
+		if id == 0 || c.version < 2 {
+			id = ownID
+		}
+		subError := func(code, text string) {
+			c.send(c.withAccount(map[string]any{"type": "error", "code": code, "message": text, "fatal": false,
+				"realm": msg.Realm}, id))
+		}
+		switch msg.Type {
+		case "ping":
 			c.send(map[string]any{"type": "pong"})
-			continue
+		case "unsubscribe":
+			c.mu.Lock()
+			delete(c.subs, subKey{id, msg.Realm})
+			c.mu.Unlock()
+			c.send(map[string]any{"type": "unsubscribed", "account_id": id, "realm": msg.Realm})
+		case "subscribe":
+			since, err := parseTime(msg.Since)
+			if err != nil {
+				subError("bad_request", "since: "+err.Error())
+				continue
+			}
+			realms := allRealms
+			if id == ownID {
+				realms = s.realms
+			}
+			if !slices.Contains(realms, msg.Realm) {
+				subError("realm_unavailable", "realm "+msg.Realm+" is not available for this account")
+				continue
+			}
+			if id%1000 == 999 {
+				subError("account_unknown", "Wargaming does not know this account")
+				continue
+			}
+			c.mu.Lock()
+			others := map[int64]bool{}
+			for k := range c.subs {
+				if k.account != ownID {
+					others[k.account] = true
+				}
+			}
+			c.mu.Unlock()
+			if id != ownID && !others[id] && len(others) >= s.maxExtra {
+				subError("too_many_accounts", "the key shows as many other accounts as it may")
+				continue
+			}
+			log.Printf("%s subscribe %d %s since %s after %d", r.RemoteAddr, id, msg.Realm, since.Format(time.RFC3339), msg.AfterID)
+			s.subscribe(c, id, msg.Realm, since, msg.AfterID)
+		default:
+			fail("bad_request", "unknown message "+msg.Type, false)
 		}
-		if json.Unmarshal(raw, &msg) != nil || msg.Type != "subscribe" {
-			fail("bad_request", "expected subscribe", false)
-			continue
-		}
-		since, err := parseTime(msg.Since)
-		if err != nil {
-			fail("bad_request", "since: "+err.Error(), false)
-			continue
-		}
-		if !slices.Contains(s.realms, msg.Realm) {
-			fail("realm_unavailable", "realm "+msg.Realm+" is not collected for this account", false)
-			continue
-		}
-		log.Printf("%s subscribe %s since %s after %d", r.RemoteAddr, msg.Realm, since.Format(time.RFC3339), msg.AfterID)
-		s.subscribe(c, msg.Realm, since, msg.AfterID)
 	}
 }
 
-// subscribe sends the history in pages and then marks the client live, under
-// the server lock so no record written meanwhile is lost or sent twice.
-func (s *server) subscribe(c *client, realm string, since time.Time, after int64) {
+// subscribe answers with the account, sends the history in pages and then
+// marks the subscription live, under the server lock so no record written
+// meanwhile is lost or sent twice.
+func (s *server) subscribe(c *client, id int64, realm string, since time.Time, after int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	acc := s.accounts[id]
+	if acc == nil {
+		// A new account: it joins the pool, its first reading is only a
+		// baseline, so there are no battles yet.
+		acc = &account{nickname: fmt.Sprintf("Player%d", id%100000)}
+		s.accounts[id] = acc
+	}
+	if c.version >= 2 {
+		c.send(map[string]any{"type": "subscribed", "account_id": id, "realm": realm, "nickname": acc.nickname,
+			"clan_tag": acc.clanTag, "collecting": true, "has_reading": acc.hasReading})
+	}
+
 	var hist []record
 	for _, r := range s.records {
-		if r.realm == realm && !r.initial && !r.Date.Before(since) && r.ID > after {
+		if r.account == id && r.realm == realm && !r.initial && !r.Date.Before(since) && r.ID > after {
 			hist = append(hist, r)
 		}
 	}
@@ -338,16 +457,16 @@ func (s *server) subscribe(c *client, realm string, since time.Time, after int64
 		if page == nil {
 			page = []record{}
 		}
-		c.send(map[string]any{"type": "history", "realm": realm, "battles": page, "has_more": end < len(hist)})
+		c.send(c.withAccount(map[string]any{"type": "history", "realm": realm, "battles": page, "has_more": end < len(hist)}, id))
 		if end >= len(hist) {
 			break
 		}
 	}
-	c.realm, c.since, c.live = realm, since, true
-	c.lastID = after
+	sub := &subscription{since: since, lastID: after}
 	for _, r := range hist {
-		c.lastID = max(c.lastID, r.ID)
+		sub.lastID = max(sub.lastID, r.ID)
 	}
+	c.subs[subKey{id, realm}] = sub
 }
 
 func parseTime(raw json.RawMessage) (time.Time, error) {

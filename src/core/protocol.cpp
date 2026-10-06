@@ -29,20 +29,31 @@ Account readAccount(const QJsonObject &obj)
 
 } // namespace
 
-QByteArray hello(const QString &key, const QString &client)
+QByteArray hello(const QString &key, const QString &client, int version)
 {
 	return encode({{QStringLiteral("type"), QStringLiteral("hello")},
-		       {QStringLiteral("protocol"), kVersion},
+		       {QStringLiteral("protocol"), version},
 		       {QStringLiteral("key"), key},
 		       {QStringLiteral("client"), client}});
 }
 
-QByteArray subscribe(const QString &realm, const QDateTime &since, qint64 afterId)
+QByteArray subscribe(qint64 accountId, const QString &realm, const QDateTime &since, qint64 afterId)
 {
-	return encode({{QStringLiteral("type"), QStringLiteral("subscribe")},
-		       {QStringLiteral("realm"), realm},
-		       {QStringLiteral("since"), since.toUTC().toString(Qt::ISODate)},
-		       {QStringLiteral("after_id"), static_cast<double>(afterId)}});
+	QJsonObject o{{QStringLiteral("type"), QStringLiteral("subscribe")},
+		      {QStringLiteral("realm"), realm},
+		      {QStringLiteral("since"), since.toUTC().toString(Qt::ISODate)},
+		      {QStringLiteral("after_id"), static_cast<double>(afterId)}};
+	// The key's own account goes without an id, which protocol 1 also reads.
+	if (accountId != 0)
+		o.insert(QStringLiteral("account_id"), static_cast<double>(accountId));
+	return encode(o);
+}
+
+QByteArray unsubscribe(qint64 accountId, const QString &realm)
+{
+	return encode({{QStringLiteral("type"), QStringLiteral("unsubscribe")},
+		       {QStringLiteral("account_id"), static_cast<double>(accountId)},
+		       {QStringLiteral("realm"), realm}});
 }
 
 QByteArray ping()
@@ -61,12 +72,24 @@ bool parse(const QByteArray &text, Message &out)
 		return false;
 
 	Message m;
+	m.accountId = static_cast<qint64>(obj.value(QStringLiteral("account_id")).toDouble());
+	m.realm = obj.value(QStringLiteral("realm")).toString();
 	if (type == QLatin1String("welcome") || type == QLatin1String("account")) {
 		m.type = type == QLatin1String("welcome") ? Message::Type::Welcome : Message::Type::Account;
 		m.account = readAccount(obj.value(QStringLiteral("account")).toObject());
+		m.maxExtraAccounts = obj.value(QStringLiteral("max_extra_accounts")).toInt();
+		for (const QJsonValue r : obj.value(QStringLiteral("realms")).toArray())
+			m.serverRealms.append(r.toString());
+	} else if (type == QLatin1String("subscribed")) {
+		m.type = Message::Type::Subscribed;
+		m.nickname = obj.value(QStringLiteral("nickname")).toString();
+		m.clanTag = obj.value(QStringLiteral("clan_tag")).toString();
+		m.collecting = obj.value(QStringLiteral("collecting")).toBool();
+		m.hasReading = obj.value(QStringLiteral("has_reading")).toBool(true);
+	} else if (type == QLatin1String("unsubscribed")) {
+		m.type = Message::Type::Unsubscribed;
 	} else if (type == QLatin1String("history") || type == QLatin1String("battles")) {
 		m.type = type == QLatin1String("history") ? Message::Type::History : Message::Type::Battles;
-		m.realm = obj.value(QStringLiteral("realm")).toString();
 		m.hasMore = obj.value(QStringLiteral("has_more")).toBool();
 		for (const QJsonValue v : obj.value(QStringLiteral("battles")).toArray()) {
 			BattleRecord r;

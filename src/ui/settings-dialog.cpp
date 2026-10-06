@@ -4,6 +4,8 @@
 #include "stats-client.h"
 
 #include <obs-frontend-api.h>
+#include <obs-module.h>
+#include <plugin-support.h>
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -124,7 +126,13 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
 	auto *layout = new QVBoxLayout(this);
 	layout->addLayout(form);
 	layout->addWidget(advanced);
-	layout->addWidget(buttons);
+	auto *version = new QLabel(uiText("Prop.Version").arg(QString::fromUtf8(PLUGIN_VERSION)));
+	version->setStyleSheet(QStringLiteral("color: palette(mid);"));
+	auto *footer = new QHBoxLayout;
+	footer->addWidget(version);
+	footer->addStretch(1);
+	footer->addWidget(buttons);
+	layout->addLayout(footer);
 
 	if (Plugin *p = plugin()) {
 		connect(p->client, &StatsClient::stateChanged, this, &SettingsDialog::updateStatus);
@@ -226,6 +234,27 @@ void SettingsDialog::updateStatus()
 			uiText("Status.Summary")
 				.arg(battles)
 				.arg(QLocale().toString(client.periodStart().toLocalTime(), QLocale::ShortFormat));
+	}
+	// The other accounts the "account" sources show.
+	for (const AccountRef &ref : client.extraAccounts()) {
+		const Feed *f = client.feed(ref);
+		QString what;
+		if (client.protocolVersion() < 2)
+			what = uiText("Copy.Unsupported");
+		else if (!f || f->status == Feed::Status::Waiting || f->status == Feed::Status::Loading)
+			what = uiText("Copy.Waiting");
+		else if (f->status == Feed::Status::Live)
+			what = f->clanTag.isEmpty() ? f->nickname
+						    : QStringLiteral("%1 [%2]").arg(f->nickname, f->clanTag);
+		else if (f->status == Feed::Status::TooMany)
+			what = uiText("Copy.TooMany").arg(client.maxExtraAccounts());
+		else if (f->status == Feed::Status::Unknown)
+			what = uiText("Copy.Unknown");
+		else if (f->status == Feed::Status::RealmUnavailable)
+			what = uiText("Copy.RealmUnavailable");
+		else
+			what = uiText("Copy.Failed").arg(f->error);
+		text += QStringLiteral("\n%1 (%2): %3").arg(ref.id).arg(ref.realm.toUpper(), what);
 	}
 	status_->setText(text);
 }

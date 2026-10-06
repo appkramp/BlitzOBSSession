@@ -1,17 +1,19 @@
-; Inno Setup script for the Windows installer.
-;
-; Build the plugin and install it into release\ first (docs/building.md):
+; Inno Setup script for the Windows installer. CI builds it
+; (.github/scripts/Package-Windows.ps1); by hand, after
 ;   cmake --preset windows-x64
 ;   cmake --build --preset windows-x64 --config Release
 ;   cmake --install build_x64 --config Release --prefix release\Release
-; then compile this script with Inno Setup 6:
-;   iscc /DVersion=0.1.0 installer\windows.iss
+; compile it with Inno Setup 6:
+;   iscc /DVersion=0.2.0 /DConfig=Release installer\windows.iss
 ;
 ; OBS 28 and later load plugins from %ProgramData%\obs-studio\plugins\<name>,
 ; with the module in bin\64bit and the resources in data.
 
 #ifndef Version
-  #define Version "0.1.0"
+  #define Version "0.0.0"
+#endif
+#ifndef Config
+  #define Config "Release"
 #endif
 #define Name "blitz-session-stats"
 
@@ -40,8 +42,8 @@ Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"
 Name: "uk"; MessagesFile: "compiler:Languages\Ukrainian.isl"
 
 [Files]
-Source: "..\release\Release\{#Name}\bin\64bit\{#Name}.dll"; DestDir: "{app}\bin\64bit"; Flags: ignoreversion
-Source: "..\release\Release\{#Name}\data\*"; DestDir: "{app}\data"; Flags: ignoreversion recursesubdirs
+Source: "..\release\{#Config}\{#Name}\bin\64bit\{#Name}.dll"; DestDir: "{app}\bin\64bit"; Flags: ignoreversion
+Source: "..\release\{#Config}\{#Name}\data\*"; DestDir: "{app}\data"; Flags: ignoreversion recursesubdirs
 
 [Code]
 // OBS keeps the module loaded while it runs; replacing it then fails.

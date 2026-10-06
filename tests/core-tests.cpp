@@ -211,15 +211,41 @@ void testCatalog()
 void testProtocol()
 {
 	const QJsonObject hello = QJsonDocument::fromJson(protocol::hello("ovk_x", "test")).object();
-	CHECK(hello.value("type") == "hello" && hello.value("protocol") == 1 && hello.value("key") == "ovk_x");
+	CHECK(hello.value("type") == "hello" && hello.value("protocol") == 2 && hello.value("key") == "ovk_x");
+	CHECK(QJsonDocument::fromJson(protocol::hello("k", "t", 1)).object().value("protocol") == 1);
 
 	const QDateTime since(QDate(2026, 9, 29), QTime(0, 0), QTimeZone(3 * 3600));
-	const QJsonObject sub = QJsonDocument::fromJson(protocol::subscribe("eu", since, 42)).object();
+	const QJsonObject sub = QJsonDocument::fromJson(protocol::subscribe(0, "eu", since, 42)).object();
 	CHECK(sub.value("since") == "2026-09-28T21:00:00Z");
 	CHECK(sub.value("after_id").toInteger() == 42);
 	CHECK(sub.value("realm") == "eu");
+	// The key's own account goes without an id, as protocol 1 expects.
+	CHECK(!sub.contains("account_id"));
+	const QJsonObject other = QJsonDocument::fromJson(protocol::subscribe(2512345678, "asia", since, 0)).object();
+	CHECK(other.value("account_id").toInteger() == 2512345678);
+	const QJsonObject unsub = QJsonDocument::fromJson(protocol::unsubscribe(512345678, "eu")).object();
+	CHECK(unsub.value("type") == "unsubscribe" && unsub.value("account_id").toInteger() == 512345678 &&
+	      unsub.value("realm") == "eu");
 
 	protocol::Message m;
+	CHECK(protocol::parse(R"({"type":"welcome","protocol":2,"account":{"account_id":7,"realms":["eu"]},
+		"max_extra_accounts":10,"realms":["eu","com","asia"]})",
+			      m));
+	CHECK(m.maxExtraAccounts == 10 && m.serverRealms.size() == 3 && m.account.realms == QStringList({"eu"}));
+	CHECK(protocol::parse(R"({"type":"subscribed","account_id":512345678,"realm":"eu","nickname":"P",
+		"clan_tag":"C","collecting":true,"has_reading":false})",
+			      m));
+	CHECK(m.type == protocol::Message::Type::Subscribed && m.accountId == 512345678 && m.realm == "eu");
+	CHECK(m.nickname == "P" && m.clanTag == "C" && m.collecting && !m.hasReading);
+	CHECK(protocol::parse(R"({"type":"battles","account_id":512345678,"realm":"eu","battles":[]})", m));
+	CHECK(m.type == protocol::Message::Type::Battles && m.accountId == 512345678);
+	CHECK(protocol::parse(R"({"type":"error","code":"too_many_accounts","fatal":false,
+		"account_id":5,"realm":"com"})",
+			      m));
+	CHECK(m.type == protocol::Message::Type::Error && !m.fatal && m.accountId == 5 && m.realm == "com");
+	CHECK(protocol::parse(R"({"type":"unsubscribed","account_id":5,"realm":"com"})", m));
+	CHECK(m.type == protocol::Message::Type::Unsubscribed);
+
 	CHECK(protocol::parse(
 		R"({"type":"welcome","protocol":1,"account":{"account_id":7,"nickname":"N","realms":["eu","com"]}})",
 		m));

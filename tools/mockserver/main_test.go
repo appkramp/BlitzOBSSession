@@ -88,8 +88,8 @@ func (c *testClient) recv() map[string]any {
 }
 
 func newTestServer(t *testing.T) (*server, string) {
-	s := &server{key: "k", realms: []string{"eu"}, pageSize: 2, maxConns: 2, nextID: 0, clients: map[*client]struct{}{}}
-	s.account = map[string]any{"account_id": 1, "realms": s.realms}
+	s := newServer("k", []string{"eu"})
+	s.pageSize, s.maxConns, s.maxExtra = 2, 2, 1
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/overlay/ws", s.handleWS)
 	ts := httptest.NewServer(mux)
@@ -100,9 +100,9 @@ func newTestServer(t *testing.T) (*server, string) {
 func TestHistoryLiveAndResume(t *testing.T) {
 	s, url := newTestServer(t)
 	start := time.Now().UTC().Add(-time.Hour)
-	s.add("eu", 1, start.Add(-time.Minute), 0) // before the period
+	s.add(ownID, "eu", 1, start.Add(-time.Minute), 0) // before the period
 	for i := range 3 {
-		s.add("eu", 2, start.Add(time.Duration(i)*time.Minute), 0)
+		s.add(ownID, "eu", 2, start.Add(time.Duration(i)*time.Minute), 0)
 	}
 
 	c := dial(t, url)
@@ -130,7 +130,7 @@ func TestHistoryLiveAndResume(t *testing.T) {
 		t.Fatal(m)
 	}
 
-	s.add("eu", 3, time.Now().UTC(), 0)
+	s.add(ownID, "eu", 3, time.Now().UTC(), 0)
 	if m := c.recv(); m["type"] != "battles" {
 		t.Fatal(m)
 	}
@@ -149,8 +149,8 @@ func TestHistoryLiveAndResume(t *testing.T) {
 func TestConnectionLimitAndInitial(t *testing.T) {
 	s, url := newTestServer(t)
 	start := time.Now().UTC().Add(-time.Hour)
-	glitch := s.add("eu", 1, start, 454595)
-	s.add("eu", 1, start.Add(time.Minute), 0)
+	glitch := s.add(ownID, "eu", 1, start, 454595)
+	s.add(ownID, "eu", 1, start.Add(time.Minute), 0)
 	s.records[0].initial = true
 
 	c := dial(t, url)
@@ -178,5 +178,61 @@ func TestWrongKey(t *testing.T) {
 	c.send(map[string]any{"type": "hello", "protocol": 1, "key": "nope"})
 	if m := c.recv(); m["code"] != "key_invalid" || m["fatal"] != true {
 		t.Fatal(m)
+	}
+}
+
+func TestProtocol2OtherAccounts(t *testing.T) {
+	s, url := newTestServer(t)
+	c := dial(t, url)
+	c.send(map[string]any{"type": "hello", "protocol": 2, "key": "k"})
+	if m := c.recv(); m["type"] != "welcome" || m["max_extra_accounts"] != float64(1) {
+		t.Fatal(m)
+	}
+	since := time.Now().UTC().Add(-time.Hour).Unix()
+
+	// A new account: named, no reading yet, an empty history.
+	c.send(map[string]any{"type": "subscribe", "realm": "com", "account_id": 512345678, "since": since})
+	if m := c.recv(); m["type"] != "subscribed" || m["account_id"] != float64(512345678) || m["has_reading"] != false {
+		t.Fatal(m)
+	}
+	if m := c.recv(); m["type"] != "history" || len(m["battles"].([]any)) != 0 || m["account_id"] != float64(512345678) {
+		t.Fatal(m)
+	}
+	// Its battles reach it, named.
+	s.add(512345678, "com", 2, time.Now().UTC(), 0)
+	if m := c.recv(); m["type"] != "battles" || m["account_id"] != float64(512345678) {
+		t.Fatal(m)
+	}
+	// Over the limit of one other account; unknown to Wargaming.
+	c.send(map[string]any{"type": "subscribe", "realm": "eu", "account_id": 600000001, "since": since})
+	if m := c.recv(); m["code"] != "too_many_accounts" || m["fatal"] != false || m["account_id"] != float64(600000001) {
+		t.Fatal(m)
+	}
+	c.send(map[string]any{"type": "unsubscribe", "realm": "com", "account_id": 512345678})
+	if m := c.recv(); m["type"] != "unsubscribed" {
+		t.Fatal(m)
+	}
+	c.send(map[string]any{"type": "subscribe", "realm": "eu", "account_id": 600000999, "since": since})
+	if m := c.recv(); m["code"] != "account_unknown" {
+		t.Fatal(m)
+	}
+}
+
+func TestProtocol1Server(t *testing.T) {
+	s, url := newTestServer(t)
+	s.protocol1 = true
+	c := dial(t, url)
+	c.send(map[string]any{"type": "hello", "protocol": 2, "key": "k"})
+	if m := c.recv(); m["code"] != "protocol" || m["fatal"] != true {
+		t.Fatal(m)
+	}
+	c1 := dial(t, url)
+	c1.send(map[string]any{"type": "hello", "protocol": 1, "key": "k"})
+	if m := c1.recv(); m["type"] != "welcome" {
+		t.Fatal(m)
+	}
+	c1.send(map[string]any{"type": "subscribe", "realm": "eu", "since": time.Now().Add(-time.Hour).Unix()})
+	if m := c1.recv(); m["type"] != "history" || m["account_id"] != nil {
+		t.Fatalf("protocol 1 names no account: %v", m)
 	}
 }

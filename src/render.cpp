@@ -30,7 +30,8 @@ QSvgRenderer *Renderer::icon(const QString &type)
 
 QImage Renderer::render(const Table &table, const Style &style)
 {
-	if (table.columns == 0 || (table.header.isEmpty() && table.rows.isEmpty() && table.total.isEmpty()))
+	if (table.columns == 0 ||
+	    (table.header.isEmpty() && table.rows.isEmpty() && table.total.isEmpty() && table.caption.isEmpty()))
 		return QImage();
 
 	QFont bodyFont = style.font;
@@ -48,6 +49,10 @@ QImage Renderer::render(const Table &table, const Style &style)
 	const int lineH = std::max(body.height(), total.height());
 	const int headerH = table.header.isEmpty() || inside ? 0 : header.height();
 	const int labelH = inside ? label.height() : 0;
+	QFont captionFont = style.font;
+	captionFont.setBold(true);
+	const QFontMetrics caption(captionFont);
+	const int captionH = table.caption.isEmpty() ? 0 : caption.height();
 	const int iconSide = static_cast<int>(std::lround(lineH * 0.8));
 	const int border = std::max(0, style.borderWidth);
 	const int padX = std::max(0, style.paddingX) + border;
@@ -85,6 +90,15 @@ QImage Renderer::render(const Table &table, const Style &style)
 	int contentW = style.columnSpacing * std::max(0, table.columns - 1);
 	for (int w : widths)
 		contentW += w;
+	// A nickname longer than the table widens the name column.
+	if (captionH) {
+		const int short_ = caption.horizontalAdvance(table.caption) - contentW;
+		if (short_ > 0) {
+			const qsizetype at = std::max<qsizetype>(0, table.stretch.indexOf(true));
+			widths[at] += short_;
+			contentW += short_;
+		}
+	}
 
 	// A width the streamer set is a minimum: the name column takes what is
 	// left over (every column a share when there is no name). A name wider
@@ -109,6 +123,8 @@ QImage Renderer::render(const Table &table, const Style &style)
 	int height = blocks * blockH + std::max(0, blocks - 1) * gap;
 	if (headerH)
 		height += headerH + (blocks ? gap : 0);
+	if (captionH)
+		height += captionH + (headerH || blocks ? gap : 0);
 	if (width <= 0 || height <= 0)
 		return QImage();
 
@@ -205,6 +221,13 @@ QImage Renderer::render(const Table &table, const Style &style)
 	};
 
 	int y = 0;
+	if (captionH) {
+		p.setFont(captionFont);
+		p.setPen(style.caption);
+		p.drawText(QRect(padX, y, width - 2 * padX, captionH),
+			   static_cast<int>(Qt::AlignLeft | Qt::AlignVCenter), table.caption);
+		y += captionH + gap;
+	}
 	if (headerH) {
 		drawCells(table.header, y, headerH, headerFont, &style.header);
 		y += headerH + gap;
