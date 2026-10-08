@@ -1,0 +1,16 @@
+﻿Privacy — Blitz Session Stats
+
+Until a key is entered in Tools → Blitz Session Stats…, the plugin sends nothing over the network.
+
+Once a key is entered, the plugin connects to the statistics server stats.appkramp.com and sends it:
+  • the key;
+  • the plugin's version, OBS's version and the operating system;
+  • the chosen region and the start of the period;
+  • the IDs of the accounts you add as separate sources.
+It receives the battle statistics of those accounts.
+
+The vehicle catalogue (tank names, tiers and classes) is downloaded from cdn.appkramp.com; none of your data is sent with it.
+
+As with any connection, the servers see the computer's IP address. The plugin collects and sends no scenes, video, audio, files or other data. A logo picture is only read from your disk.
+
+To stop all connections, remove the key in the plugin's settings, or uninstall the plugin.

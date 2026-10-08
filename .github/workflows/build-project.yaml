@@ -216,6 +216,40 @@ jobs:
           config: ${{ needs.check-event.outputs.config }}
           package: ${{ fromJSON(needs.check-event.outputs.package) }}
 
+      # Code signing by SignPath Foundation, for a release tag only: every
+      # signing request is approved by hand on signpath.io. It is skipped until
+      # the repository has the SignPath variables and the API token secret
+      # (SIGNPATH_ORGANIZATION_ID, SIGNPATH_PROJECT_SLUG,
+      # SIGNPATH_SIGNING_POLICY_SLUG; SIGNPATH_API_TOKEN).
+      - name: Upload Unsigned Installer 📤
+        id: unsigned
+        if: github.ref_type == 'tag' && vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-installer-${{ needs.check-event.outputs.commitHash }}
+          path: ${{ github.workspace }}/release/*-windows-x64-installer.exe
+          if-no-files-found: error
+
+      - name: Sign Installer ✍️
+        if: github.ref_type == 'tag' && vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          # Waits for the approval on signpath.io.
+          wait-for-completion-timeout-in-seconds: 7200
+          output-artifact-directory: ${{ github.workspace }}/release/signed
+
+      - name: Use Signed Installer 🔏
+        if: github.ref_type == 'tag' && vars.SIGNPATH_ORGANIZATION_ID != ''
+        run: |
+          # Use Signed Installer 🔏
+          Get-ChildItem release/signed/*.exe | Move-Item -Destination release/ -Force
+
       - name: Upload Artifacts 📡
         uses: actions/upload-artifact@v4
         with:

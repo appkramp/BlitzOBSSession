@@ -46,9 +46,17 @@ CatalogStore::CatalogStore(QObject *parent) : QObject(parent)
 	timer_.start(kRefreshMs);
 }
 
+void CatalogStore::setEnabled(bool enabled)
+{
+	const bool was = enabled_;
+	enabled_ = enabled;
+	if (enabled && !was)
+		refresh();
+}
+
 void CatalogStore::refresh()
 {
-	if (busy_)
+	if (busy_ || !enabled_)
 		return;
 	busy_ = true;
 	http::get(QUrl(QString::fromLatin1(kManifestUrl)), this,

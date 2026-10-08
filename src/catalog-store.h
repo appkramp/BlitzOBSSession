@@ -21,6 +21,9 @@ public:
 
 	const Catalog &catalog() const { return catalog_; }
 	void refresh();
+	// Nothing is fetched while disabled — until the streamer has entered a
+	// key, the plugin does not go on the network at all. Enabling fetches.
+	void setEnabled(bool enabled);
 
 signals:
 	void changed();
@@ -32,6 +35,7 @@ private:
 	Catalog catalog_;
 	QString cachedSha_;
 	bool busy_ = false;
+	bool enabled_ = false;
 	QTimer timer_;
 };
 

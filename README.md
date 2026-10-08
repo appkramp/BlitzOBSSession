@@ -45,6 +45,38 @@
 
 Версия плагина видна в окне настроек и в свойствах источника.
 
+## Конфиденциальность
+
+Пока в настройках плагина не введён ключ, плагин ничего не отправляет в сеть.
+
+После ввода ключа он подключается к серверу статистики `stats.appkramp.com` и передаёт ему
+ключ, версию плагина, версию OBS и операционную систему, выбранные регион и начало
+периода, а также ID аккаунтов, добавленных отдельными источниками. В ответ он получает
+статистику боёв этих аккаунтов. Каталог техники (названия, уровни, классы танков)
+загружается с `cdn.appkramp.com` без передачи ваших данных.
+
+Сцены, видео, звук, файлы и другие данные плагин не собирает и не передаёт; картинка
+логотипа читается только с вашего диска. Чтобы отключить связь, удалите ключ в настройках
+или удалите плагин. Тот же текст показывает установщик для Windows.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by
+[SignPath Foundation](https://signpath.org/).
+
+Подписываются только установщики, собранные GitHub Actions из этого репозитория; каждую
+подпись вручную подтверждает ответственный за выпуск.
+
+| Роль | Участники |
+|---|---|
+| Authors (committers) | [appkramp](https://github.com/appkramp) |
+| Reviewers | [appkramp](https://github.com/appkramp) |
+| Approvers | [appkramp](https://github.com/appkramp) |
+
+Privacy policy: see [«Конфиденциальность»](#конфиденциальность) above — the plugin sends
+nothing until a key is entered, and then only what is listed there, to the statistics
+server.
+
 ## Сборка из исходников
 
 Нужны CMake 3.28+ и Xcode (macOS) или Visual Studio 2022 (Windows):

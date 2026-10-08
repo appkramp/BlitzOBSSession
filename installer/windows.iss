@@ -35,11 +35,17 @@ OutputBaseFilename={#Name}-{#Version}-windows-x64-installer
 Compression=lzma2
 SolidCompression=yes
 UninstallDisplayName=Blitz Session Stats (OBS plugin)
+VersionInfoProductName=Blitz Session Stats
+VersionInfoProductVersion={#Version}
+VersionInfoVersion={#Version}
+VersionInfoDescription=Blitz Session Stats installer
 
 [Languages]
-Name: "en"; MessagesFile: "compiler:Default.isl"
-Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"
-Name: "uk"; MessagesFile: "compiler:Languages\Ukrainian.isl"
+; The privacy notice is shown before installing, as SignPath Foundation's
+; code signing terms ask of software that talks to a server.
+Name: "en"; MessagesFile: "compiler:Default.isl"; InfoBeforeFile: "privacy-en.txt"
+Name: "ru"; MessagesFile: "compiler:Languages\Russian.isl"; InfoBeforeFile: "privacy-ru.txt"
+Name: "uk"; MessagesFile: "compiler:Languages\Ukrainian.isl"; InfoBeforeFile: "privacy-uk.txt"
 
 [Files]
 Source: "..\release\{#Config}\{#Name}\bin\64bit\{#Name}.dll"; DestDir: "{app}\bin\64bit"; Flags: ignoreversion

@@ -159,8 +159,12 @@ void obs_module_post_load(void)
 	QObject::connect(scaleTimer, &QTimer::timeout, [] { normalizeSceneScales(); });
 	scaleTimer->start(100);
 
-	g_plugin->catalog->refresh();
+	// The catalogue is fetched once there is a key: with none, the plugin
+	// makes no network request at all.
+	QObject::connect(g_plugin->client, &StatsClient::stateChanged,
+			 [] { g_plugin->catalog->setEnabled(!g_plugin->client->config().key.isEmpty()); });
 	g_plugin->client->setConfig(Config::load());
+	g_plugin->catalog->setEnabled(!g_plugin->client->config().key.isEmpty());
 	renderAllSources();
 }
 
