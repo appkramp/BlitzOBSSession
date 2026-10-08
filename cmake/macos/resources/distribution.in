@@ -15,7 +15,7 @@
     </choice>
     <pkg-ref id="@MACOS_BUNDLEID@" version="@CMAKE_PROJECT_VERSION@">#@CMAKE_PROJECT_NAME@.pkg</pkg-ref>
     <installation-check script="installCheck();" />
-    <script>
+    <script><![CDATA[
         function installCheck() {
             var macOSVersion = system.version.ProductVersion
 
@@ -28,6 +28,38 @@
                 my.result.type = 'Fatal';
                 return false;
             }
+
+            // An installed copy: say what happens to it — updated, installed
+            // again, or replaced by an older version — and let the user go
+            // on or stop. Its files are replaced wholesale (scripts/preinstall).
+            var version = '@CMAKE_PROJECT_VERSION@';
+            var plugin = system.env.HOME + '/Library/Application Support/obs-studio/plugins/@CMAKE_PROJECT_NAME@.plugin';
+            var message = null;
+            if (system.files.fileExistsAtPath(plugin)) {
+                var bundle = system.files.bundleAtPath(plugin);
+                var installed = bundle ? bundle.CFBundleShortVersionString : null;
+                if (!installed) {
+                    message = system.localizedStringWithFormat('Unknown', version);
+                } else {
+                    var order = system.compareVersions(installed, version);
+                    if (order < 0)
+                        message = system.localizedStringWithFormat('Upgrade', installed, version);
+                    else if (order == 0)
+                        message = system.localizedStringWithFormat('Same', installed);
+                    else
+                        message = system.localizedStringWithFormat('Newer', installed, version);
+                }
+            }
+            var obs = system.applications.fromIdentifier('com.obsproject.obs-studio');
+            if (obs && obs.length > 0)
+                message = (message ? message + '\n\n' : '') + system.localizedString('CloseObs');
+            if (message) {
+                my.result.title = system.localizedString('Title');
+                my.result.message = message;
+                my.result.type = 'Warning';
+                return false;
+            }
+            return true;
         }
-    </script>
+    ]]></script>
 </installer-gui-script>

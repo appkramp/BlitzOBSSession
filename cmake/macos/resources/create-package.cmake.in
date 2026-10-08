@@ -14,10 +14,19 @@ endif()
 make_directory("$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/temp")
 
 execute_process(
+  COMMAND /bin/sh "@CMAKE_CURRENT_SOURCE_DIR@/cmake/macos/resources/component-plist.sh"
+    "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/package"
+    "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/temp/components.plist"
+  COMMAND_ERROR_IS_FATAL ANY
+)
+
+execute_process(
   COMMAND /usr/bin/pkgbuild
     --identifier '@MACOS_BUNDLEID@'
     --version '@CMAKE_PROJECT_VERSION@'
     --root "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/package"
+    --scripts "@CMAKE_CURRENT_SOURCE_DIR@/cmake/macos/resources/scripts"
+    --component-plist "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/temp/components.plist"
     "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/temp/@CMAKE_PROJECT_NAME@.pkg"
     COMMAND_ERROR_IS_FATAL ANY
   )
@@ -25,6 +34,7 @@ execute_process(
 execute_process(
   COMMAND /usr/bin/productbuild
     --distribution "@CMAKE_CURRENT_BINARY_DIR@/distribution"
+    --resources "@CMAKE_CURRENT_SOURCE_DIR@/cmake/macos/resources/installer"
     --package-path "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/temp"
     "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/@CMAKE_PROJECT_NAME@.pkg"
     COMMAND_ERROR_IS_FATAL ANY)

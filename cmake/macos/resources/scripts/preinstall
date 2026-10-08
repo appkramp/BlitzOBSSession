@@ -1,0 +1,13 @@
+#!/bin/sh
+# An update or a reinstall replaces the plugin wholesale, so nothing an
+# earlier version shipped is left behind. Settings and the key live in
+# ~/Library/Application Support/obs-studio/plugin_config and are kept.
+#
+# $2 is where the package installs to: the user's home folder (the
+# distribution enables the current user's home only).
+target="$2/Library/Application Support/obs-studio/plugins/blitz-session-stats.plugin"
+echo "blitz-session-stats preinstall: destination '$2'"
+if [ -n "$2" ] && [ "$2" != "/" ] && [ -d "$target" ]; then
+	rm -rf "$target"
+fi
+exit 0

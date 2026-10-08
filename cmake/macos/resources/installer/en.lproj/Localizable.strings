@@ -1,0 +1,7 @@
+/* The macOS installer's messages; see distribution.in. */
+"CloseObs" = "OBS Studio is running. The new version takes effect after OBS is restarted.";
+"Upgrade" = "Blitz Session Stats %@ is installed. It will be updated to %@. Settings and the key are kept.";
+"Same" = "Blitz Session Stats %@ is already installed. Continue to install it again, replacing its files. Settings and the key are kept.";
+"Newer" = "A newer Blitz Session Stats is installed: %@. Continue to replace it with %@. Settings and the key are kept.";
+"Unknown" = "Blitz Session Stats is already installed. Continue to replace it with %@. Settings and the key are kept.";
+"Title" = "Blitz Session Stats is already installed";
