@@ -4,7 +4,7 @@
 ;   cmake --build --preset windows-x64 --config Release
 ;   cmake --install build_x64 --config Release --prefix release\Release
 ; compile it with Inno Setup 6:
-;   iscc /DVersion=1.2.1 /DConfig=Release installer\windows.iss
+;   iscc /DVersion=1.2.2 /DConfig=Release installer\windows.iss
 ;
 ; OBS 28 and later load plugins from %ProgramData%\obs-studio\plugins\<name>,
 ; with the module in bin\64bit and the resources in data.
