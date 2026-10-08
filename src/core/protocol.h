@@ -58,6 +58,12 @@ bool parse(const QByteArray &text, Message &out);
 // settings form; the server decides validity.
 bool looksLikeKey(const QString &key);
 
+// The key in what the streamer pasted: copied from a web page or a messenger
+// it can come with quotes, words around it, or invisible characters (a
+// zero-width space) that trimming does not remove. Text with no key in it
+// comes back trimmed.
+QString extractKey(const QString &pasted);
+
 // Delay before reconnect attempt `attempt` (0-based): 1, 2, 4 … 60 seconds,
 // with up to 20% jitter so a server restart is not met by every client at once.
 int reconnectDelayMs(int attempt, double jitter01);

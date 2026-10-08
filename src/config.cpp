@@ -1,5 +1,7 @@
 #include "config.h"
 
+#include "core/protocol.h"
+
 #include <obs-module.h>
 #include <util/platform.h>
 
@@ -29,7 +31,8 @@ Config Config::load()
 	if (!f.open(QIODevice::ReadOnly))
 		return c;
 	const QJsonObject o = QJsonDocument::fromJson(f.readAll()).object();
-	c.key = o.value(QStringLiteral("key")).toString();
+	// A key saved by an earlier version may carry what was pasted around it.
+	c.key = protocol::extractKey(o.value(QStringLiteral("key")).toString());
 	c.realm = o.value(QStringLiteral("realm")).toString(c.realm);
 	c.period = o.value(QStringLiteral("period")).toString() == QLatin1String("since") ? Period::Since
 											  : Period::Today;

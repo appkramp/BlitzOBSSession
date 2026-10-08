@@ -115,6 +115,13 @@ bool looksLikeKey(const QString &key)
 	return re.match(key).hasMatch();
 }
 
+QString extractKey(const QString &pasted)
+{
+	static const QRegularExpression re(QStringLiteral("ovk_[A-Za-z0-9_-]{32,64}(?![A-Za-z0-9_-])"));
+	const QRegularExpressionMatch m = re.match(pasted);
+	return m.hasMatch() ? m.captured() : pasted.trimmed();
+}
+
 int reconnectDelayMs(int attempt, double jitter01)
 {
 	const double base = std::min(60000.0, 1000.0 * std::pow(2.0, std::clamp(attempt, 0, 6)));

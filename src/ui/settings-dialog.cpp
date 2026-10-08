@@ -166,7 +166,8 @@ void SettingsDialog::save()
 	if (!p)
 		return;
 	Config c = p->client->config();
-	c.key = key_->text().trimmed();
+	c.key = protocol::extractKey(key_->text());
+	key_->setText(c.key); // show what is actually used
 	c.realm = realm_->currentData().toString();
 	c.period = since_->isChecked() ? Config::Period::Since : Config::Period::Today;
 	c.since = sinceEdit_->dateTime();
@@ -181,7 +182,7 @@ void SettingsDialog::save()
 
 void SettingsDialog::updateKeyHint()
 {
-	const QString key = key_->text().trimmed();
+	const QString key = protocol::extractKey(key_->text());
 	keyWarning_->setVisible(!key.isEmpty() && !protocol::looksLikeKey(key));
 }
 

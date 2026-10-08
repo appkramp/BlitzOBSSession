@@ -274,6 +274,14 @@ void testKeysAndBackoff()
 	CHECK(!protocol::looksLikeKey("ovk_short"));
 	CHECK(!protocol::looksLikeKey(" ovk_0123456789abcdefghijABCDEFGHIJ-_"));
 
+	// What gets pasted around a key.
+	const QString key = "ovk_qOKWbBpk4iXB6MLhbGHj9xcVc0zZCj99sec-0DrY45s";
+	CHECK(protocol::extractKey(key) == key);
+	CHECK(protocol::extractKey(QString::fromUtf8("\u200b") + key + QString::fromUtf8("\u200b")) == key);
+	CHECK(protocol::extractKey(QString::fromUtf8("\u00a0«") + key + QString::fromUtf8("»\r\n")) == key);
+	CHECK(protocol::extractKey("Key: " + key + " (copy it)") == key);
+	CHECK(protocol::extractKey("  not a key  ") == "not a key");
+
 	CHECK(protocol::reconnectDelayMs(0, 0) == 1000);
 	CHECK(protocol::reconnectDelayMs(3, 0) == 8000);
 	CHECK(protocol::reconnectDelayMs(20, 0) == 60000);
