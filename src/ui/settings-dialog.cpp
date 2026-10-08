@@ -19,6 +19,7 @@
 #include <QPointer>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -58,7 +59,14 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
 	keyRow->addWidget(key_, 1);
 	keyRow->addWidget(show);
 	keyWarning_ = hint(uiText("Settings.KeyFormat"));
+	applyTimer_ = new QTimer(this);
+	applyTimer_->setSingleShot(true);
+	applyTimer_->setInterval(700);
+	connect(applyTimer_, &QTimer::timeout, this, &SettingsDialog::apply);
+
 	connect(key_, &QLineEdit::textChanged, this, &SettingsDialog::updateKeyHint);
+	connect(key_, &QLineEdit::textChanged, this, &SettingsDialog::applySoon);
+	connect(key_, &QLineEdit::editingFinished, this, &SettingsDialog::apply);
 
 	realm_ = new QComboBox;
 	for (const char *realm : {"eu", "com", "asia"})
@@ -70,6 +78,9 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
 	sinceEdit_->setCalendarPopup(true);
 	sinceEdit_->setDisplayFormat(QStringLiteral("dd.MM.yyyy HH:mm"));
 	connect(since_, &QRadioButton::toggled, sinceEdit_, &QWidget::setEnabled);
+	connect(since_, &QRadioButton::toggled, this, &SettingsDialog::apply);
+	connect(sinceEdit_, &QDateTimeEdit::dateTimeChanged, this, &SettingsDialog::applySoon);
+	connect(realm_, &QComboBox::currentIndexChanged, this, &SettingsDialog::apply);
 	auto *sinceRow = new QHBoxLayout;
 	sinceRow->addWidget(since_);
 	sinceRow->addWidget(sinceEdit_, 1);
@@ -82,7 +93,11 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
 	for (const char *lang : {"auto", "ru", "en", "uk"})
 		language_->addItem(uiText(QByteArray("Language.").append(lang).constData()), QString::fromLatin1(lang));
 
+	connect(language_, &QComboBox::currentIndexChanged, this, &SettingsDialog::apply);
+
 	server_ = new QLineEdit;
+	connect(server_, &QLineEdit::textChanged, this, &SettingsDialog::applySoon);
+	connect(server_, &QLineEdit::editingFinished, this, &SettingsDialog::apply);
 	server_->setPlaceholderText(QString::fromLatin1(Config::kDefaultServer));
 
 	status_ = new QLabel;
@@ -90,7 +105,8 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
 	status_->setTextInteractionFlags(Qt::TextSelectableByMouse);
 	auto *reload = new QPushButton(uiText("Settings.Reload"));
 	reload->setToolTip(uiText("Settings.ReloadHint"));
-	connect(reload, &QPushButton::clicked, this, [] {
+	connect(reload, &QPushButton::clicked, this, [this] {
+		apply(); // what is in the window, the key just pasted included
 		if (Plugin *p = plugin())
 			p->client->reload();
 	});
@@ -119,9 +135,11 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent)
 		advancedForm->labelForField(server_)->setVisible(on);
 	});
 
-	auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Close);
-	connect(buttons, &QDialogButtonBox::accepted, this, &SettingsDialog::save);
+	auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close);
 	connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+	// However the window is closed, a change still waiting for the timer is
+	// applied.
+	connect(this, &QDialog::finished, this, &SettingsDialog::apply);
 
 	auto *layout = new QVBoxLayout(this);
 	layout->addLayout(form);
@@ -147,6 +165,7 @@ void SettingsDialog::loadConfig()
 	if (!p)
 		return;
 	const Config &c = p->client->config();
+	loading_ = true;
 	key_->setText(c.key);
 	realm_->setCurrentIndex(std::max(0, realm_->findData(c.realm)));
 	today_->setChecked(c.period == Config::Period::Today);
@@ -156,24 +175,48 @@ void SettingsDialog::loadConfig()
 						  : QDateTime(QDate::currentDate(), QTime(0, 0)));
 	language_->setCurrentIndex(std::max(0, language_->findData(c.language)));
 	server_->setText(c.server == QLatin1String(Config::kDefaultServer) ? QString() : c.server);
+	loading_ = false;
+	applyTimer_->stop();
 	updateKeyHint();
 	updateStatus();
 }
 
-void SettingsDialog::save()
+void SettingsDialog::applySoon()
+{
+	if (!loading_)
+		applyTimer_->start();
+}
+
+void SettingsDialog::apply()
 {
 	Plugin *p = plugin();
-	if (!p)
+	if (!p || loading_)
 		return;
-	Config c = p->client->config();
+	applyTimer_->stop();
+	const Config before = p->client->config();
+	Config c = before;
 	c.key = protocol::extractKey(key_->text());
-	key_->setText(c.key); // show what is actually used
+	// A key still being typed is not tried; it is when it looks whole, or
+	// when the field is left.
+	if (!c.key.isEmpty() && !protocol::looksLikeKey(c.key) && key_->hasFocus())
+		c.key = before.key;
+	// Show what is actually used, but not under the cursor of someone typing.
+	if (c.key != key_->text() && !key_->hasFocus()) {
+		loading_ = true;
+		key_->setText(c.key);
+		loading_ = false;
+	}
 	c.realm = realm_->currentData().toString();
 	c.period = since_->isChecked() ? Config::Period::Since : Config::Period::Today;
 	c.since = sinceEdit_->dateTime();
 	c.language = language_->currentData().toString();
 	c.server = server_->text().trimmed().isEmpty() ? QString::fromLatin1(Config::kDefaultServer)
 						       : server_->text().trimmed();
+	const bool same = c.key == before.key && c.realm == before.realm && c.period == before.period &&
+			  (c.period == Config::Period::Today || c.since == before.since) &&
+			  c.language == before.language && c.server == before.server;
+	if (same)
+		return;
 	c.save();
 	p->client->setConfig(c);
 	renderAllSources(); // the language may have changed

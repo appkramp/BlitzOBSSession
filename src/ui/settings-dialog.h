@@ -11,6 +11,7 @@ class QDateTimeEdit;
 class QLabel;
 class QLineEdit;
 class QRadioButton;
+class QTimer;
 
 namespace bss {
 
@@ -23,7 +24,10 @@ public:
 	void loadConfig();
 
 private:
-	void save();
+	// Every change applies at once — there is no Save: a key pasted is the key
+	// used. Typing is waited out briefly, so a key is not tried half-typed.
+	void apply();
+	void applySoon();
 	void updateStatus();
 	void updateKeyHint();
 
@@ -36,6 +40,8 @@ private:
 	QComboBox *language_;
 	QLineEdit *server_;
 	QLabel *status_;
+	QTimer *applyTimer_;
+	bool loading_ = false;
 };
 
 } // namespace bss
