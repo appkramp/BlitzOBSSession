@@ -44,7 +44,10 @@ int main(int argc, char **argv)
 	};
 	Session session;
 	qint64 id = 1;
+	// BSS_EMPTY: a session with no battles yet; BSS_NO_TOTAL: the total row off.
 	for (const auto &b : battles) {
+		if (qEnvironmentVariableIsSet("BSS_EMPTY"))
+			break;
 		BattleRecord r;
 		r.id = id;
 		r.tankId = b.tank;
@@ -64,6 +67,7 @@ int main(int argc, char **argv)
 					   {"Overlay.Total", "Итого"}};
 	TableOptions o;
 	o.language = lang;
+	o.showTotal = !qEnvironmentVariableIsSet("BSS_NO_TOTAL");
 	for (const Column &c : layout.columns())
 		if (c.visibleByDefault)
 			o.columns << c.id;
@@ -98,6 +102,7 @@ int main(int argc, char **argv)
 					    : Logo::Align::Center;
 	Renderer renderer(QStringLiteral(BSS_SOURCE_DIR "/data/icons"));
 	QImage image = renderer.render(table, style);
+	std::printf("image %dx%d\n", image.width(), image.height());
 
 	// On a mid-grey checkerboard, the way OBS shows a transparent source.
 	QImage canvas(image.width() + 80, image.height() + 80, QImage::Format_ARGB32_Premultiplied);

@@ -32,9 +32,15 @@ QSvgRenderer *Renderer::icon(const QString &type)
 
 QImage Renderer::renderTable(const Table &table, const Style &style)
 {
-	if (table.columns == 0 ||
-	    (table.header.isEmpty() && table.rows.isEmpty() && table.total.isEmpty() && table.caption.isEmpty()))
-		return QImage();
+	// A source never shrinks to nothing: OBS cannot select or move a source
+	// without a size, so with nothing to show it stays a transparent box the
+	// size of one row — invisible on stream, where the first battle appears.
+	if (table.columns == 0) {
+		QImage empty(std::max(style.minWidth, 200), std::max(1, QFontMetrics(style.font).height()),
+			     QImage::Format_RGBA8888_Premultiplied);
+		empty.fill(Qt::transparent);
+		return empty;
+	}
 
 	QFont bodyFont = style.font;
 	QFont headerFont = style.font;
@@ -130,6 +136,8 @@ QImage Renderer::renderTable(const Table &table, const Style &style)
 		height += headerH + (blocks ? gap : 0);
 	if (captionH)
 		height += captionH + (headerH || blocks ? gap : 0);
+	if (height == 0)
+		height = blockH; // nothing yet: an empty row's room, see above
 	if (width <= 0 || height <= 0)
 		return QImage();
 
